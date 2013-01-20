@@ -35,14 +35,8 @@ virtual void Event(bz_eventData *eventData)
 	          string capper_line;
 	          capper.cap_num++;
 		  while(!data_file.eof()) {
- 		   string sLine = ";";
-		   string each_line
-		   eache_line = getLine(data_file
-		  }
-		
-
-		  
-	       
+		    //need to figure out how to overwrite cap number for that player.
+	          } 
 	       } else {
 	          capper.cap_num++;
 	          data_file  << capper.player_bzID << ";" << "\0" << capper.cap_num << "\n";
