@@ -4,8 +4,7 @@ typedef
 {
  int player_bzID;
  int cap_num;
- string player_name;
-}ScorerDef;
+}CapList;
 
 class CapNRecEvents : public bz_Plugin
 {
@@ -42,6 +41,7 @@ virtual void Event(bz_eventData *eventData)
 	          data_file  << capper.player_bzID << ";" << "\0" << capper.cap_num << "\n";
 
 	       }
+	       
 
  	       
 
@@ -60,6 +60,30 @@ bool doesPlayerDataExist(int player_bzID, ofstream data_file){
        }
     }
     return false;
+}
+
+void readCapList(void){
+     std::string line;
+     std::ifstream myCapFile("cap_record.txt");
+     int tmp = 0;
+
+     CapList myCapListData;
+
+     myCapList.clear();
+
+     if(myCapList.is_open()) {
+
+        while(myCapList.good()) {
+	  
+	  getline(myCapFile, line);
+	  tmp++;
+	  getline(line,myCapList.player_bzid, ';');
+	  myCapListData.cap_num = line.substr(myCapListData.player_bzid.size() + 2, line.size()); 
+	  myCapList.push_back(myCapListData);
+
+	}
+        myCapFile.close();
+     }
 }
 
 
