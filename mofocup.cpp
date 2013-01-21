@@ -8,6 +8,13 @@
 //#include "plugin_utils.h"
 #include <map>
 
+int processCallbackForRank(void *a_param, int argc, char **argv, char **column)
+{
+    int rank = atoi(argv[0]);
+
+    return rank;
+}
+
 class mofocup : public bz_Plugin, public bz_CustomSlashCommandHandler
 {
 public:
@@ -55,7 +62,7 @@ void mofocup::Init(const char* commandLine)
 
         if (db != 0) //if the database is empty, let's create the tables needed
         {
-            doQuery("CREATE TABLE Cups(CupID INTEGER, ServerID TEXT, StartTime TEXT, EndTime Text, CupType Text, primary key (CupID) );");
+            doQuery("CREATE TABLE Cups(CupID INTEGER, ServerID TEXT, StartTime TEXT, EndTime Text, CupType Text, primary key (CupID) )");
             doQuery("CREATE TABLE Captures(BZID INTEGER, CupID INTEGER, Counter INTEGER default (0), primary key(BZID,CupID) )");
         }
 
@@ -87,8 +94,8 @@ void mofocup::Event(bz_EventData* eventData)
     {
         case bz_eCaptureEvent: // A flag is captured
         {
-	    int pre_rank;
-	    int post_rank;
+	        int pre_rank;
+	        int post_rank;
             bz_CTFCaptureEventData_V1* ctfdata = (bz_CTFCaptureEventData_V1*)eventData;
 
 
@@ -107,12 +114,12 @@ void mofocup::Event(bz_EventData* eventData)
             std::string capturerid = pr->bzID.c_str();
             incrementCounter(capturerid, "flag_capture", "1");
 
-	    post_rank = determineRank(pr->bzID.c_str());
-	    bz_sendTextMessagef(BZ_SERVER, BZ_ALLUSERS, eActionMessage, "Player: %s captured the flag! Earning 1 point.", pr->callsign);
+    	    post_rank = determineRank(pr->bzID.c_str());
+    	    bz_sendTextMessagef(BZ_SERVER, BZ_ALLUSERS, eActionMessage, "Player: %s captured the flag! Earning 1 point.", pr->callsign.c_str());
 
-	    if(post_rank > pre_rank) {
-                bz_sendTextMessagef(BZ_SERVER, BZ_ALLUSERS, eActionMessage, "Player: %s is now rank %i", pr->callsign, post_rank);
-	    }
+    	    if(post_rank > pre_rank) {
+                    bz_sendTextMessagef(BZ_SERVER, BZ_ALLUSERS, eActionMessage, "Player: %s is now rank %i", pr->callsign.c_str(), post_rank);
+    	    }
 
             bz_freePlayerRecord(pr);
         }
@@ -162,12 +169,12 @@ std::string mofocup::convertToString(int myInt)
 
     return myString;
 }
-int mofocup::determineRank(std::string bzID){
-    int rank;
-    
-    //do some cool magical sql spells to spit out rank for bzID.
 
-    return rank;
+int mofocup::determineRank(std::string bzID)
+{
+    char* db_err = 0;
+    std::string query = "SELECT (SELECT COUNT(*) FROM `captures` AS c2 WHERE c2.Counter > c1.Counter) + 1 AS row_Num FROM `Captures` AS c1 WHERE `BZID` = '" + bzID + "' ORDER BY Counter DESC";
+    int ret = sqlite3_exec(db, query.c_str(), processCallbackForRank, 0, &db_err);
 }
 
 void mofocup::doQuery(std::string query)
@@ -176,7 +183,7 @@ void mofocup::doQuery(std::string query)
     bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
 
     char* db_err = 0;
-    int ret = sqlite3_exec(db,query.c_str(), NULL, 0, &db_err);
+    int ret = sqlite3_exec(db, query.c_str(), NULL, 0, &db_err);
 
     if (db_err != 0)
     {
@@ -189,9 +196,10 @@ void mofocup::incrementCounter(std::string bzid, std::string cuptype, std::strin
 {
     char* db_err = 0;
 
-    std::string query = "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Counter) VALUES (";
-    query += "'" + bzid + "', " + "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' and `CupType` = '" + cuptype + "' AND datetime('now') < `EndTime` AND datetime('now') > `StartTime`), " +
-    "COALESCE((SELECT Counter + " + incrementBy + " FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='" + cuptype + "' AND datetime('now') < `EndTime` AND datetime('now') > `StartTime`), " + incrementBy + "))";
+    std::string query = "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Counter)";
+    query += "VALUES ('" + bzid + "',";
+    query += "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`),";
+    query += "(SELECT COALESCE((SELECT `Counter` + 1 FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 1)))";
     
     doQuery(query);
 }
