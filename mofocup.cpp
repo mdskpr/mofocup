@@ -11,8 +11,8 @@
 class mofocup : public bz_Plugin, public bz_CustomSlashCommandHandler
 {
 public:
-    sqlite3* db;
-    std::string dbfilename;
+    sqlite3* db; //sqlite database we'll be using
+    std::string dbfilename; //the path to the database
 
     virtual const char* Name (){return "MoFo Cup";}
     virtual void Init(const char* /*commandLine*/);
@@ -30,46 +30,54 @@ BZ_PLUGIN(mofocup);
 
 void mofocup::Init(const char* commandLine)
 {
-    bz_registerCustomSlashCommand("cup", this);
+    bz_registerCustomSlashCommand("cup", this); //register the /cup command
 
-    if(commandLine == NULL || std::string(commandLine).empty())
+    if(commandLine == NULL || std::string(commandLine).empty()) //no database provided, unloadplugin ourselves
     {
-        std::cerr << "please provide a filename for the database" << std::endl; //, [Recordindividual] SQLiteDB = <somepath> ...
+        bz_debugMessage(0, "DEBUG :: MoFo Cup :: Please provide a filename for the database");
+        bz_debugMessage(0, "DEBUG :: MoFo Cup :: -loadplugin /path/to/mofocup.so,/path/to/database.db");
+        bz_debugMessage(0, "DEBUG :: MoFo Cup :: Unloading MoFoCup plugin...");
         bz_unloadPlugin(Name());
     }
     else
     {
         dbfilename = std::string(commandLine);
-        std::cerr << "record individual database file: " << dbfilename  << std::endl;
+        bz_debugMessagef(0, "DEBUG :: MoFo Cup :: Using the following database: %s", dbfilename.c_str());
         sqlite3_open(dbfilename.c_str(),&db);
-        if (db == 0)
+
+        if (db == 0) //we couldn't read the database provided
         {
-            std::cerr << "no database connection!" << std::endl;
+            bz_debugMessagef(0, "DEBUG :: MoFo Cup :: Error! Could not connect to: %s", dbfilename.c_str());
+            bz_debugMessage(0, "DEBUG :: MoFo Cup :: Unloading MoFoCup plugin...");
             bz_unloadPlugin(Name());
         }
-        if (db != 0)
+
+        if (db != 0) //if the database is empty, let's create the tables needed
         {
             doQuery("CREATE TABLE Cups(CupID INTEGER, ServerID TEXT, StartTime TEXT, EndTime Text, CupType Text, primary key (CupID) );");
             doQuery("CREATE TABLE Captures(BZID INTEGER, CupID INTEGER, Counter INTEGER default (0), primary key(BZID,CupID) )");
         }
-        if (!Register(bz_ePlayerDieEvent) || !Register(bz_eCaptureEvent))
+
+        if (!Register(bz_ePlayerDieEvent) || !Register(bz_eCaptureEvent)) //unload the plugin if any events fail to register
+        {
+            bz_debugMessage(0, "DEBUG :: MoFo Cup :: A BZFS event failed to load.");
+            bz_debugMessage(0, "DEBUG :: MoFo Cup :: Unloading MoFoCup plugin...");
             bz_unloadPlugin(Name());
-      }
+        }
+    }
 
-    bz_debugMessage(4,"mofocup plugin loaded");
+    bz_debugMessage(4, "DEBUG :: MoFo Cup :: Successfully loaded and database connection ready.");
 }
-
-
 
 void mofocup::Cleanup()
 {
     Flush();
     bz_removeCustomSlashCommand("cup");
     
-    if (db != NULL)
+    if (db != NULL) //close the database connection since we won't need it
       sqlite3_close(db);
 
-    bz_debugMessage(4,"mofocup plugin unloaded");
+    bz_debugMessage(4, "DEBUG :: MoFo Cup :: Successfully unloaded and database connection closed.");
 }
 
 void mofocup::Event(bz_EventData* eventData)
