@@ -24,6 +24,7 @@ public:
     virtual void doQuery(std::string query);
     virtual void incrementCounter(std::string bzid, std::string cuptype, std::string incrementBy);
     virtual std::string convertToString(int myInt);
+    virtual int determineRank(std::string bzID);
 };
 
 BZ_PLUGIN(mofocup);
@@ -101,19 +102,18 @@ void mofocup::Event(bz_EventData* eventData)
             // double eventTime: The game time (in seconds)
             
             bz_BasePlayerRecord *pr = bz_getPlayerByIndex(ctfdata->playerCapping);
-            pre_rank = determineRank(pr->bzID);
+            pre_rank = determineRank(pr->bzID.c_str());
 
             std::string capturerid = pr->bzID.c_str();
             incrementCounter(capturerid, "flag_capture", "1");
 
-	    post_rank = determineRank(pr->bzID);
+	    post_rank = determineRank(pr->bzID.c_str());
 	    bz_sendTextMessagef(BZ_SERVER, BZ_ALLUSERS, eActionMessage, "Player: %s captured the flag! Earning 1 point.", pr->callsign);
 
 	    if(post_rank > pre_rank) {
                 bz_sendTextMessagef(BZ_SERVER, BZ_ALLUSERS, eActionMessage, "Player: %s is now rank %i", pr->callsign, post_rank);
 	    }
 
-            
             bz_freePlayerRecord(pr);
         }
         break;
@@ -147,6 +147,9 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
     if(command == "cup")
     {
         // Handle the command "cup" here.
+    } else if(command == "rank") {
+      //Handle rank command.
+
     }
 }
 
@@ -158,6 +161,13 @@ std::string mofocup::convertToString(int myInt)
     myString = string.str();
 
     return myString;
+}
+int mofocup::determineRank(std::string bzID){
+    int rank;
+    
+    //do some cool magical sql spells to spit out rank for bzID.
+
+    return rank;
 }
 
 void mofocup::doQuery(std::string query)
