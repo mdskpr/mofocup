@@ -151,19 +151,26 @@ std::string mofocup::convertToString(int myInt)
 
 void mofocup::doQuery(std::string query)
 {
-    std::cerr << query << std::endl;
+    bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
+    bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
+
     char* db_err = 0;
     int ret = sqlite3_exec(db,query.c_str(), NULL, 0, &db_err);
+
     if (db_err != 0)
-    std::cerr << db_err << std::endl;
+    {
+        bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
+    }
 }
 
 void mofocup::incrementCounter(std::string bzid, std::string cuptype, std::string incrementBy)
 {
     char* db_err = 0;
+
     std::string query = "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Counter) VALUES (";
     query += "'" + bzid + "', " + "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' and `CupType` = '" + cuptype + "' AND datetime('now') < `EndTime` AND datetime('now') > `StartTime`), " +
     "COALESCE((SELECT Counter + " + incrementBy + " FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='" + cuptype + "' AND datetime('now') < `EndTime` AND datetime('now') > `StartTime`), " + incrementBy + "))";
-    std::cerr << query << std::endl;
+    
     doQuery(query);
 }
