@@ -22,7 +22,7 @@ public:
     virtual bool SlashCommand(int playerID, bz_ApiString command, bz_ApiString message, bz_APIStringList *params);
     
     virtual void doQuery(std::string query);
-    virtual void incrementCounter(std::string bzid, std::string cuptype);
+    virtual void incrementCounter(std::string bzid, std::string cuptype, std::string incrementBy);
     virtual std::string convertToString(int myInt);
 };
 
@@ -93,7 +93,7 @@ void mofocup::Event(bz_EventData* eventData)
             bz_BasePlayerRecord *pr = bz_getPlayerByIndex(ctfdata->playerCapping);
             
             std::string capturerid = pr->bzID.c_str();
-            incrementCounter(convertToString(capturerid), "flag_capture", "1");
+            incrementCounter(capturerid, "flag_capture", "1");
             
             bz_freePlayerRecord(pr);
         }
