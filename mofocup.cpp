@@ -86,6 +86,8 @@ void mofocup::Event(bz_EventData* eventData)
     {
         case bz_eCaptureEvent: // A flag is captured
         {
+	    int pre_rank;
+	    int post_rank;
             bz_CTFCaptureEventData_V1* ctfdata = (bz_CTFCaptureEventData_V1*)eventData;
 
 
@@ -99,9 +101,18 @@ void mofocup::Event(bz_EventData* eventData)
             // double eventTime: The game time (in seconds)
             
             bz_BasePlayerRecord *pr = bz_getPlayerByIndex(ctfdata->playerCapping);
-            
+            pre_rank = determineRank(pr->bzID);
+
             std::string capturerid = pr->bzID.c_str();
             incrementCounter(capturerid, "flag_capture", "1");
+
+	    post_rank = determineRank(pr->bzID);
+	    bz_sendTextMessagef(BZ_SERVER, BZ_ALLUSERS, eActionMessage, "Player: %s captured the flag! Earning 1 point.", pr->callsign);
+
+	    if(post_rank > pre_rank) {
+                bz_sendTextMessagef(BZ_SERVER, BZ_ALLUSERS, eActionMessage, "Player: %s is now rank %i", pr->callsign, post_rank);
+	    }
+
             
             bz_freePlayerRecord(pr);
         }
