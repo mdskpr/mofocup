@@ -15,6 +15,13 @@ int processCallbackForRank(void *a_param, int argc, char **argv, char **column)
     return rank;
 }
 
+struct timingSystem 
+{
+   int seconds_epoch;
+   int bzid;
+
+};
+
 class mofocup : public bz_Plugin, public bz_CustomSlashCommandHandler
 {
 public:
@@ -81,6 +88,7 @@ void mofocup::Cleanup()
 {
     Flush();
     bz_removeCustomSlashCommand("cup");
+    bz_removeCustomSlashCommand("rank");
     
     if (db != NULL) //close the database connection since we won't need it
       sqlite3_close(db);
@@ -143,6 +151,17 @@ void mofocup::Event(bz_EventData* eventData)
 
         }
         break;
+	
+	case bz_ePlayerJoinPartEvent:
+	{
+	    std::string p_bzid;
+	    timingSystem player_time;
+	    bz_PlayerJoinPartEventData_V1* joinpartdata = (bz_PlayerJoinPartEventData_V1*)eventData;
+	    bz_BasePlayerRecord *pr = bz_getPlayerByIndex(joinpartdata->playerID);
+	    p_bzid = pr->bzID;
+	    player_time.bzid = p_bzid;
+        }
+	break;
 
         default:
         break;
