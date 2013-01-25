@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2012 Vladimir Jimenez, Ned Anderson
+Copyright (c) 2013 Vladimir Jimenez, Ned Anderson
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -67,8 +67,12 @@ int showCupLeaderBoard(void *a_param, int argc, char **argv, char **column)
     {
         bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "Planet MoFo Cup || Top 10");
         bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "-------------------------");
+        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "#     Caps     Callsign");
 
-        //i needs a for loop
+        for (int i = 0; i < argc; i++)
+        {
+            bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "#%i    %i     %s", i, argv[2], argv[4]);
+        }
 
         messageQueue.pop(); //remove this message from the queue
     }
@@ -90,7 +94,7 @@ public:
     virtual void doQuery(std::string query);
     virtual void incrementCounter(std::string bzid, std::string cuptype, std::string incrementBy);
     virtual std::string convertToString(int myInt);
-    virtual int determineRank(std::string bzID);
+    //virtual int determineRank(std::string bzID);
 
     //we're storing the time people play so we can rank players based on how quick they make as many caps
     struct playingTimeStructure
@@ -266,14 +270,24 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 {
     if(command == "cup")
     {
-        messagesToSend newTask;
-        newTask.sendTo = playerID;
+        messagesToSend newTask; //we got a new message to send
+        newTask.sendTo = playerID; //let's get their player id
 
         char* db_err = 0;
         std::string query = "SELECT * FROM `Captures` WHERE `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`) ORDER BY `Counter` DESC, `PlayingTime` ASC LIMIT 10";
+
+        bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
+
         int ret = sqlite3_exec(db, query.c_str(), showCupLeaderBoard, 0, &db_err);
 
-        messageQueue.push(newTask);
+        if (db_err != 0)
+        {
+            bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
+            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
+        }
+
+        messageQueue.push(newTask); //push it to the queye
     }
     else if(command == "rank")
     {
