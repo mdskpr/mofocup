@@ -63,6 +63,10 @@ messagesToSend currentMessage; //the current method we're dealing with
 
 int showCupLeaderBoard(void *a_param, int argc, char **argv, char **column)
 {
+    currentMessage = messageQueue.front();
+
+    bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Sending /rank data to player id %i", currentMessage.sendTo);
+
     if (!messageQueue.empty())
     {
         bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "Planet MoFo Cup || Top 10");
@@ -71,7 +75,7 @@ int showCupLeaderBoard(void *a_param, int argc, char **argv, char **column)
 
         for (int i = 0; i < argc; i++) //send the top 10
         {
-            bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "#%i    %i     %s", i, argv[2], argv[4]);
+            bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "#%i    %i     %s", i + 1, argv[2], argv[4]);
         }
 
         messageQueue.pop(); //remove this message from the queue
@@ -84,6 +88,10 @@ int showCupLeaderBoard(void *a_param, int argc, char **argv, char **column)
 
 int showRankToPlayer(void *a_param, int argc, char **argv, char **column)
 {
+    currentMessage = messageQueue.front();
+
+    bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Sending /rank data to player id %i", currentMessage.sendTo);
+
     if (!messageQueue.empty())
     {
         bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "You're currently #%i in the MoFu Cup", argv[0]);
@@ -127,6 +135,7 @@ BZ_PLUGIN(mofocup);
 void mofocup::Init(const char* commandLine)
 {
     bz_registerCustomSlashCommand("cup", this); //register the /cup command
+    bz_registerCustomSlashCommand("rank", this); //register the /rank command
 
     if(commandLine == NULL || std::string(commandLine).empty()) //no database provided, unloadplugin ourselves
     {
@@ -290,6 +299,8 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
         messagesToSend newTask; //we got a new message to send
         newTask.sendTo = playerID; //let's get their player id
 
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Player ID %i was added to the message queue for /cup data.", newTask.sendTo);
+
         char* db_err = 0;
         std::string query = "SELECT * FROM `Captures` WHERE `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`) ORDER BY `Counter` DESC, `PlayingTime` ASC LIMIT 10";
 
@@ -311,13 +322,15 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
         messagesToSend newTask; //we got a new message to send
         newTask.sendTo = playerID; //let's get their player id
 
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Player ID %i was added to the message queue for /rank data.", newTask.sendTo);
+
         char* db_err = 0;
-        std::string query = "SELECT (SELECT COUNT(*) FROM `captures` AS c2 WHERE c2.Counter > c1.Counter) + 1 AS row_Num FROM `Captures` AS c1 WHERE `BZID` = '" + playerID + "' ORDER BY Counter DESC LIMIT 1";
+        std::string query = "SELECT (SELECT COUNT(*) FROM `captures` AS c2 WHERE c2.Counter > c1.Counter) + 1 AS row_Num FROM `Captures` AS c1 WHERE `BZID` = '" + convertToString(playerID) + "' ORDER BY Counter DESC LIMIT 1";
 
         bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
         bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
 
-        int ret = sqlite3_exec(db, query.c_str(), showCupLeaderBoard, 0, &db_err);
+        int ret = sqlite3_exec(db, query.c_str(), showRankToPlayer, 0, &db_err);
 
         if (db_err != 0)
         {
