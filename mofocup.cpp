@@ -106,7 +106,7 @@ int showRankToPlayer(void *a_param, int argc, char **argv, char **column)
 
 int announceCaptureEvent(void *a_param, int argc, char **argv, char **column)
 {
-
+    //still to do
 }
 
 class mofocup : public bz_Plugin, public bz_CustomSlashCommandHandler
@@ -197,10 +197,21 @@ void mofocup::Event(bz_EventData* eventData)
     {
         case bz_eCaptureEvent: // A flag is captured
         {
+            /*
+
+                MoFo Cup :: Capping Tournament
+                ------------------------------
+
+                Don't ask about the giant query, it works. We're going to
+                be incrementing the amount of caps a player has by one
+                every time he or she caps. In the event of a tie of caps,
+                we are going to determine the winner by who has capped in
+                the least amount of seconds played.
+
+            */
             bz_CTFCaptureEventData_V1* ctfdata = (bz_CTFCaptureEventData_V1*)eventData;
 
-            //I swear... do not ask about the query, it just works
-            std::string bzid = std::string(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str());
+            std::string bzid = std::string(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str()); //we're storing the capper's bzid
             std::string query = "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Counter, PlayingTime, Callsign) ";
             query += "VALUES ('" + bzid + "', ";
             query += "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), ";
@@ -232,6 +243,18 @@ void mofocup::Event(bz_EventData* eventData)
 
         case bz_ePlayerJoinEvent: // A player joins
         {
+            /*
+                MoFo Cup :: Notes
+                -----------------
+
+                Because of the possibility of a tie can occur, we are going
+                to be keeping track of the amount of time a player has played
+                and we will determine the winner by who has acheived the most
+                in the least mount of time played. We will be keeping track
+                of the amount of seconds played. Each time a player joins, we
+                will store the time.
+
+            */
             bz_PlayerJoinPartEventData_V1* joindata = (bz_PlayerJoinPartEventData_V1*)eventData;
 
             if(atoi(joindata->record->bzID.c_str()) > 0)
@@ -248,6 +271,17 @@ void mofocup::Event(bz_EventData* eventData)
 
         case bz_ePlayerPartEvent: // A player parts
         {
+            /*
+                MoFo Cup :: Notes
+                -----------------
+
+                Going hand in hand with the bz_ePlayerJoinEvent, we are going
+                to be checking the time a player has joined and subtracting
+                the amount of seconds played when the player leaves. We will
+                then add this time to the database and we will know the total
+                amount of time played.
+
+            */
             bz_PlayerJoinPartEventData_V1* partdata = (bz_PlayerJoinPartEventData_V1*)eventData;
 
             if (playingTime.size() > 0)
