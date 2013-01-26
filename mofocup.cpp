@@ -112,7 +112,6 @@ public:
     virtual void doQuery(std::string query);
     virtual void incrementCounter(std::string bzid, std::string cuptype, std::string incrementBy);
     virtual std::string convertToString(int myInt);
-    //virtual int determineRank(std::string bzID);
 
     //we're storing the time people play so we can rank players based on how quick they make as many caps
     struct playingTimeStructure
@@ -339,13 +338,6 @@ std::string mofocup::convertToString(int myInt)
 
     return myString;
 }
-
-/*int mofocup::determineRank(std::string bzID)
-{
-    char* db_err = 0;
-    std::string query = "SELECT (SELECT COUNT(*) FROM `captures` AS c2 WHERE c2.Counter > c1.Counter) + 1 AS row_Num FROM `Captures` AS c1 WHERE `BZID` = '" + bzID + "' ORDER BY Counter DESC";
-    int ret = sqlite3_exec(db, query.c_str(), showCupLeaderBoard, 0, &db_err);
-}*/
 
 void mofocup::doQuery(std::string query)
 {
