@@ -65,7 +65,7 @@ int showCupLeaderBoard(void *a_param, int argc, char **argv, char **column)
 {
     currentMessage = messageQueue.front();
 
-    bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Sending /rank data to player id %i", currentMessage.sendTo);
+    bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Sending /rank data to player id %i", currentMessage.sendTo);
 
     if (!messageQueue.empty())
     {
@@ -90,11 +90,11 @@ int showRankToPlayer(void *a_param, int argc, char **argv, char **column)
 {
     currentMessage = messageQueue.front();
 
-    bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Sending /rank data to player id %i", currentMessage.sendTo);
+    bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Sending /rank data to player id %i", currentMessage.sendTo);
 
     if (!messageQueue.empty())
     {
-        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "You're currently #%i in the MoFu Cup", argv[0]);
+        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "You're currently #%i in the MoFo Cup", argv[0]);
 
         messageQueue.pop(); //remove this message from the queue
     }
@@ -123,7 +123,6 @@ public:
     virtual bool SlashCommand(int playerID, bz_ApiString command, bz_ApiString message, bz_APIStringList *params);
 
     virtual void doQuery(std::string query);
-    virtual void incrementCounter(std::string bzid, std::string cuptype, std::string incrementBy);
     virtual std::string convertToString(int myInt);
 
     //we're storing the time people play so we can rank players based on how quick they make as many caps
@@ -295,10 +294,10 @@ void mofocup::Event(bz_EventData* eventData)
                         int timePlayed = bz_getCurrentTime() - playingTime.at(i).joinTime;
                         std::string updatePlayingTime = "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Counter, PlayingTime, Callsign) ";
                         updatePlayingTime += "VALUES ('" + myBZID + "', ";
-                        updatePlayingTime += "'(SELECT `Counter` FROM `Captures` WHERE `Captures`.`BZID` = '" + myBZID + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)', ";
-                        updatePlayingTime += "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), ";
-                        updatePlayingTime += "(SELECT COALESCE((SELECT `PlayingTime` + " + convertToString(timePlayed) + " FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + myBZID + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 1)), ";
-                        updatePlayingTime += callsign + ")";
+                        updatePlayingTime += "'(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)', ";
+                        updatePlayingTime += "'(SELECT `Counter` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + myBZID + "' AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)', ";
+                        updatePlayingTime += "'(SELECT COALESCE('(SELECT `PlayingTime` + " + convertToString(timePlayed) + " FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + myBZID + "' AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)', '1'))', ";
+                        updatePlayingTime += "'" + callsign + "')";
 
                         doQuery(updatePlayingTime);
                         playingTime.erase(playingTime.begin() + i, playingTime.begin() + i + 1);
@@ -319,13 +318,15 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
     {
         messagesToSend newTask; //we got a new message to send
         newTask.sendTo = playerID; //let's get their player id
+        messageQueue.push(newTask); //push it to the queue
 
-        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Player ID %i was added to the message queue for /cup data.", newTask.sendTo);
+        bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Player ID %i was added to the message queue for /cup data.", newTask.sendTo);
 
         char* db_err = 0;
         std::string query = "SELECT * FROM `Captures` WHERE `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`) ORDER BY `Counter` DESC, `PlayingTime` ASC LIMIT 10";
 
-        bz_debugMessage(2, "DEBUG :: MoFo Cup :: (/cup command) Executing following SQL query...");
+        bz_debugMessage(3, "DEBUG :: MoFo Cup :: The /cup command has been executed");
+        bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
         bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
 
         int ret = sqlite3_exec(db, query.c_str(), showCupLeaderBoard, 0, &db_err);
@@ -335,20 +336,20 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
             bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
         }
-
-        messageQueue.push(newTask); //push it to the queue
     }
     else if(command == "rank")
     {
         messagesToSend newTask; //we got a new message to send
         newTask.sendTo = playerID; //let's get their player id
+        messageQueue.push(newTask); //push it to the queue
 
-        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Player ID %i was added to the message queue for /rank data.", newTask.sendTo);
+        bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Player ID %i was added to the message queue for /rank data.", newTask.sendTo);
 
         char* db_err = 0;
         std::string query = "SELECT (SELECT COUNT(*) FROM `captures` AS c2 WHERE c2.Counter > c1.Counter) + 1 AS row_Num FROM `Captures` AS c1 WHERE `BZID` = '" + std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()) + "' ORDER BY Counter DESC LIMIT 1";
 
-        bz_debugMessage(2, "DEBUG :: MoFo Cup :: (/rank command) Executing following SQL query...");
+        bz_debugMessage(3, "DEBUG :: MoFo Cup :: The /rank command has been executed");
+        bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
         bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
 
         int ret = sqlite3_exec(db, query.c_str(), showRankToPlayer, 0, &db_err);
@@ -358,8 +359,6 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
             bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
         }
-
-        messageQueue.push(newTask); //push it to the queue
     }
 }
 
