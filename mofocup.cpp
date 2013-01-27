@@ -61,29 +61,21 @@ struct messagesToSend
 std::queue<messagesToSend> messageQueue; //all the messages we need to send
 messagesToSend currentMessage; //the current method we're dealing with
 
+int leaderBoard = 1;
+
 int showCupLeaderBoard(void *a_param, int argc, char **argv, char **column)
 {
-    currentMessage = messageQueue.front();
-
-    bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Sending /rank data to player id %i", currentMessage.sendTo);
-
     if (!messageQueue.empty())
     {
-        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "Planet MoFo Cup || Top 10");
-        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "-------------------------");
-        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "      Caps     Callsign");
-
-        for (int i = 0; i < argc; i++) //send the top 10
-        {
-            bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "#%i    %i     %s", i + 1, argv[2], argv[4]);
-        }
-
-        messageQueue.pop(); //remove this message from the queue
+        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "#%i     %i        %s", leaderBoard, atoi(argv[2]), argv[4]);
+        leaderBoard++;
     }
     else
     {
         bz_debugMessage(2, "DEBUG :: MoFo Cup :: There is no one to send this '/cup' query to!");
     }
+
+    return 0;
 }
 
 int showRankToPlayer(void *a_param, int argc, char **argv, char **column)
@@ -94,7 +86,7 @@ int showRankToPlayer(void *a_param, int argc, char **argv, char **column)
 
     if (!messageQueue.empty())
     {
-        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "You're currently #%i in the MoFo Cup", argv[0]);
+        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "You're currently #%i in the MoFo Cup", atoi(argv[0]));
 
         messageQueue.pop(); //remove this message from the queue
     }
@@ -102,6 +94,8 @@ int showRankToPlayer(void *a_param, int argc, char **argv, char **column)
     {
         bz_debugMessage(2, "DEBUG :: MoFo Cup :: There is no one to send this '/rank' query to!");
     }
+
+    return 0;
 }
 
 int announceCaptureEvent(void *a_param, int argc, char **argv, char **column)
@@ -194,7 +188,7 @@ void mofocup::Event(bz_EventData* eventData)
 {
     switch (eventData->eventType)
     {
-        case bz_eCaptureEvent: // A flag is captured
+        case bz_eCaptureEvent:
         {
             /*
 
@@ -211,12 +205,13 @@ void mofocup::Event(bz_EventData* eventData)
             bz_CTFCaptureEventData_V1* ctfdata = (bz_CTFCaptureEventData_V1*)eventData;
 
             std::string bzid = std::string(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str()); //we're storing the capper's bzid
-            std::string query = "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Counter, PlayingTime, Callsign) ";
-            query += "VALUES ('" + bzid + "', ";
-            query += "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), ";
-            query += "(SELECT COALESCE((SELECT `Counter` + 1 FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 1)), ";
-            query += "(SELECT `PlayingTime` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), ";
-            query += "(SELECT `Callsign` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`))";
+            std::string query = ""
+            "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Counter, PlayingTime, Callsign) "
+            "VALUES ('" + bzid + "', "
+            "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
+            "(SELECT COALESCE((SELECT `Counter` + 1 FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 1)), "
+            "(SELECT `PlayingTime` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
+            "(SELECT `Callsign` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`))";
 
             bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
             bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
@@ -232,7 +227,7 @@ void mofocup::Event(bz_EventData* eventData)
         }
         break;
 
-        case bz_ePlayerDieEvent: // A player dies
+        case bz_ePlayerDieEvent:
         {
             bz_PlayerDieEventData_V1* diedata = (bz_PlayerDieEventData_V1*)eventData;
 
@@ -240,7 +235,7 @@ void mofocup::Event(bz_EventData* eventData)
         }
         break;
 
-        case bz_ePlayerJoinEvent: // A player joins
+        case bz_ePlayerJoinEvent:
         {
             /*
                 MoFo Cup :: Notes
@@ -268,7 +263,7 @@ void mofocup::Event(bz_EventData* eventData)
         }
         break;
 
-        case bz_ePlayerPartEvent: // A player parts
+        case bz_ePlayerPartEvent:
         {
             /*
                 MoFo Cup :: Notes
@@ -330,13 +325,25 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
         bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
         bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
 
+        currentMessage = messageQueue.front();
+
+        bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Sending /rank data to player id %i", currentMessage.sendTo);
+
+        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "Planet MoFo Cup || Top 10");
+        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "-------------------------");
+        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "      Caps     Callsign");
+
         int ret = sqlite3_exec(db, query.c_str(), showCupLeaderBoard, 0, &db_err);
+
+        leaderBoard = 1;
+        messageQueue.pop(); //remove this message from the queue
 
         if (db_err != 0)
         {
             bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
             bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
         }
+
     }
     else if(command == "rank")
     {
