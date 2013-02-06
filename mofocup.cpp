@@ -246,7 +246,7 @@ void mofocup::Event(bz_EventData* eventData)
                 sqlite3_finalize(statement);
             }
 
-            newRankDecimal = points/(playingTime/86400);
+            newRankDecimal = (float)points/(float)(playingTime/86400);
             newRank = int(newRankDecimal);
 
             bz_debugMessagef(3, "DEBUG :: MoFo Cup :: %s (%s)", bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str());
