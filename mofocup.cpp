@@ -116,8 +116,10 @@ public:
     virtual void Event(bz_EventData *eventData);
     virtual bool SlashCommand(int playerID, bz_ApiString command, bz_ApiString message, bz_APIStringList *params);
 
+    virtual void addCurrentPlayingTime(std::string bzid, std::string callsign);
     virtual void doQuery(std::string query);
     virtual std::string convertToString(int myInt);
+    virtual void trackNewPlayingTime(std::string bzid);
 
     //we're storing the time people play so we can rank players based on how quick they make as many caps
     struct playingTimeStructure
@@ -135,7 +137,7 @@ void mofocup::Init(const char* commandLine)
     bz_registerCustomSlashCommand("cup", this); //register the /cup command
     bz_registerCustomSlashCommand("rank", this); //register the /rank command
 
-    if(commandLine == NULL || std::string(commandLine).empty()) //no database provided, unloadplugin ourselves
+    if (commandLine == NULL || std::string(commandLine).empty()) //no database provided, unloadplugin ourselves
     {
         bz_debugMessage(0, "DEBUG :: MoFo Cup :: Please provide a filename for the database");
         bz_debugMessage(0, "DEBUG :: MoFo Cup :: -loadplugin /path/to/mofocup.so,/path/to/database.db");
@@ -217,12 +219,15 @@ void mofocup::Event(bz_EventData* eventData)
 
             bz_CTFCaptureEventData_V1* ctfdata = (bz_CTFCaptureEventData_V1*)eventData;
 
+            addCurrentPlayingTime(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str());
+            trackNewPlayingTime(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str());
+
             int points, playingTime, newRank;
             int bonusPoints = 8 * (bz_getTeamCount(ctfdata->teamCapped) - bz_getTeamCount(ctfdata->teamCapping)) + 3 * bz_getTeamCount(ctfdata->teamCapped);
             std::string bzid = std::string(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str()); //we're storing the capper's bzid
             sqlite3_stmt *statement;
 
-            if(sqlite3_prepare_v2(db, "SELECT `Points`, `PlayingTime` FROM `Captures` WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
+            if (sqlite3_prepare_v2(db, "SELECT `Points`, `PlayingTime` FROM `Captures` WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
             {
                 sqlite3_bind_text(statement, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
                 int cols = sqlite3_column_count(statement), result = 0;
@@ -242,7 +247,7 @@ void mofocup::Event(bz_EventData* eventData)
             "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
             "(SELECT `Callsign` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)), "
             "(SELECT COALESCE((SELECT `Points` + '" + convertToString(bonusPoints) + "' FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), '" + convertToString(bonusPoints) + "')), "
-            newRank + ", "
+            "" + convertToString(newRank) + ", "
             "(SELECT `PlayingTime` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)";
 
             bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
@@ -286,12 +291,14 @@ void mofocup::Event(bz_EventData* eventData)
 
             if(atoi(joindata->record->bzID.c_str()) > 0 && joindata->record->team != eObservers)
             {
-                playingTimeStructure newPlayingTime;
+                /*playingTimeStructure newPlayingTime;
 
                 newPlayingTime.bzid = joindata->record->bzID.c_str();
                 newPlayingTime.joinTime = bz_getCurrentTime();
 
-                playingTime.push_back(newPlayingTime);
+                playingTime.push_back(newPlayingTime);*/
+
+                trackNewPlayingTime(joindata->record->bzID.c_str());
             }
         }
         break;
@@ -312,7 +319,9 @@ void mofocup::Event(bz_EventData* eventData)
 
             bz_PlayerJoinPartEventData_V1* partdata = (bz_PlayerJoinPartEventData_V1*)eventData;
 
-            if (playingTime.size() > 0)
+            addCurrentPlayingTime(partdata->record->bzID.c_str(), partdata->record->callsign.c_str());
+
+            /*if (playingTime.size() > 0)
             {
                 for (unsigned int i = 0; i < playingTime.size(); i++)
                 {
@@ -321,7 +330,7 @@ void mofocup::Event(bz_EventData* eventData)
                         std::string myBZID = partdata->record->bzID.c_str();
                         std::string callsign = partdata->record->callsign.c_str();
                         int timePlayed = bz_getCurrentTime() - playingTime.at(i).joinTime;
-                        std::string updatePlayingTime = ""
+                        std::string updatePlayingTimeQuery = ""
                         "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Counter, PlayingTime, Callsign) "
                         "VALUES ('" + myBZID + "', "
                         "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`), "
@@ -329,11 +338,11 @@ void mofocup::Event(bz_EventData* eventData)
                         "(SELECT COALESCE((SELECT `PlayingTime` + " + convertToString(timePlayed) + " FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + myBZID + "' AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`), '1')), "
                         "'" + callsign + "')";
 
-                        doQuery(updatePlayingTime);
+                        doQuery(updatePlayingTimeQuery);
                         playingTime.erase(playingTime.begin() + i, playingTime.begin() + i + 1);
                     }
                 }
-            }
+            }*/
         }
         break;
 
@@ -404,6 +413,30 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
     }
 }
 
+void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
+{
+    if (playingTime.size() > 0)
+    {
+        for (unsigned int i = 0; i < playingTime.size(); i++)
+        {
+            if (playingTime.at(i).bzid == bzid)
+            {
+                int timePlayed = bz_getCurrentTime() - playingTime.at(i).joinTime;
+                std::string updatePlayingTimeQuery = ""
+                "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Counter, PlayingTime, Callsign) "
+                "VALUES ('" + bzid + "', "
+                "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`), "
+                "(SELECT `Points` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`), "
+                "(SELECT COALESCE((SELECT `PlayingTime` + " + convertToString(timePlayed) + " FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`), '1')), "
+                "'" + callsign + "')";
+
+                doQuery(updatePlayingTimeQuery);
+                playingTime.erase(playingTime.begin() + i, playingTime.begin() + i + 1);
+            }
+        }
+    }
+}
+
 std::string mofocup::convertToString(int myInt)
 {
     std::string myString;
@@ -427,4 +460,14 @@ void mofocup::doQuery(std::string query)
         bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
         bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
     }
+}
+
+void mofocup::trackNewPlayingTime(std::string bzid)
+{
+    playingTimeStructure newPlayingTime;
+
+    newPlayingTime.bzid = bzid;
+    newPlayingTime.joinTime = bz_getCurrentTime();
+
+    playingTime.push_back(newPlayingTime);
 }
