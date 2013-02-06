@@ -1,6 +1,6 @@
 # Planet MoFo Cup
 
-This is the BZFlag plug-in used by Planet MoFo for their monthly cups to see who has captured the flag the most, who has had the most geno kills, and other tournamets.
+This is the BZFlag plug-in used by Planet MoFo for their monthly cups to see who has captured the flag the most, who has had the most geno kills, and other tournaments.
 
 ## Compiling
 Add this plug-in to the BZFlag build system and compile.
