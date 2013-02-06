@@ -44,64 +44,12 @@ Version:
 
 #include <iostream>
 #include <fstream>
-#include <queue>
 #include <sqlite3.h>
 #include <sstream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
 #include "bzfsAPI.h"
-
-//keep track of the people we need to send messages to
-struct messagesToSend
-{
-    int sendTo;
-};
-
-std::queue<messagesToSend> messageQueue; //all the messages we need to send
-messagesToSend currentMessage; //the current method we're dealing with
-
-int leaderBoard = 1;
-
-int showCupLeaderBoard(void *a_param, int argc, char **argv, char **column)
-{
-    if (!messageQueue.empty())
-    {
-        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "#%i     %i        %s", leaderBoard, atoi(argv[2]), argv[4]);
-        leaderBoard++;
-    }
-    else
-    {
-        bz_debugMessage(2, "DEBUG :: MoFo Cup :: There is no one to send this '/cup' query to!");
-    }
-
-    return 0;
-}
-
-int showRankToPlayer(void *a_param, int argc, char **argv, char **column)
-{
-    currentMessage = messageQueue.front();
-
-    bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Sending /rank data to player id %i", currentMessage.sendTo);
-
-    if (!messageQueue.empty())
-    {
-        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "You're currently #%i in the MoFo Cup", atoi(argv[0]));
-
-        messageQueue.pop(); //remove this message from the queue
-    }
-    else
-    {
-        bz_debugMessage(2, "DEBUG :: MoFo Cup :: There is no one to send this '/rank' query to!");
-    }
-
-    return 0;
-}
-
-int announceCaptureEvent(void *a_param, int argc, char **argv, char **column)
-{
-    //still to do
-}
 
 class mofocup : public bz_Plugin, public bz_CustomSlashCommandHandler
 {
@@ -268,7 +216,7 @@ void mofocup::Event(bz_EventData* eventData)
             bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
 
             char* db_err = 0;
-            int ret = sqlite3_exec(db, query.c_str(), announceCaptureEvent, 0, &db_err);
+            //int ret = sqlite3_exec(db, query.c_str(), announceCaptureEvent, 0, &db_err);
 
             if (db_err != 0)
             {
@@ -345,69 +293,41 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
     {
         sqlite3_stmt *statement;
 
-        if (sqlite3_prepare_v2(db, "SELECT * FROM `Captures` WHERE `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`) ORDER BY `Rating` DESC, `PlayingTime` ASC LIMIT 5", -1, &statement, 0) == SQLITE_OK)
+        if (sqlite3_prepare_v2(db, "SELECT `Callsign`, `Rating` FROM `Captures` WHERE `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`) ORDER BY `Rating` DESC, `PlayingTime` ASC LIMIT 5", -1, &statement, 0) == SQLITE_OK)
         {
-            sqlite3_bind_text(statement, 1, std::string(bz_getPublicAddr().c_str()), -1, SQLITE_TRANSIENT);
-            int cols = sqlite3_column_count(statement), result = 0;
-            
+            sqlite3_bind_text(statement, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+            int cols = sqlite3_column_count(statement), result = 0, counter = 1;
+
             bz_sendTextMessage(BZ_SERVER, playerID, "Planet MoFo CTF Cup");
             bz_sendTextMessage(BZ_SERVER, playerID, "--------------------");
-            bz_sendTextMessage(BZ_SERVER, playerID, "        Callsign              Points");
-            
+            bz_sendTextMessage(BZ_SERVER, playerID, "        Callsign                    Points");
+
             while (true)
             {
                 result = sqlite3_step(statement);
-			
+
                 if (result == SQLITE_ROW)
                 {
-                    for (int col = 0; col < cols; col++)
-                    {
-                        std::string playerRatio = (char*)sqlite3_column_text(statement, col);
-                    }
+                    std::string place = "#" + convertToString(counter);
+                    std::string playerCallsign = (char*)sqlite3_column_text(statement, 0);
+                    std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
 
-                    bz_sendTextMessagef(BZ_SERVER, playerID, "#%i %s %s", playerRatio.c_str());
+                    while (place.length() != 8) place += " ";
+                    while (playerCallsign.length() != 28) playerCallsign += " ";
+                    while (playerRatio.length() != 6) playerRatio += " ";
+
+                    bz_sendTextMessage(BZ_SERVER, playerID, std::string(place + playerCallsign + playerRatio).c_str());
                 }
                 else
                     break;
+
+                counter++;
       		}
-            
+
             sqlite3_finalize(statement);
         }
-        
+
         return true;
-    /*
-        messagesToSend newTask; //we got a new message to send
-        newTask.sendTo = playerID; //let's get their player id
-        messageQueue.push(newTask); //push it to the queue
-
-        bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Player ID %i was added to the message queue for /cup data.", newTask.sendTo);
-
-        char* db_err = 0;
-        std::string query = "SELECT * FROM `Captures` WHERE `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`) ORDER BY `Points` DESC, `PlayingTime` ASC LIMIT 10";
-
-        bz_debugMessage(3, "DEBUG :: MoFo Cup :: The /cup command has been executed");
-        bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
-        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
-
-        currentMessage = messageQueue.front();
-
-        bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Sending /rank data to player id %i", currentMessage.sendTo);
-
-        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "Planet MoFo Cup || Top 10");
-        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "-------------------------");
-        bz_sendTextMessagef(BZ_SERVER, currentMessage.sendTo, "      Caps     Callsign");
-
-        int ret = sqlite3_exec(db, query.c_str(), showCupLeaderBoard, 0, &db_err);
-
-        leaderBoard = 1;
-        messageQueue.pop(); //remove this message from the queue
-
-        if (db_err != 0)
-        {
-            bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
-            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
-        }
-        */
     }
     else if(command == "rank")
     {
@@ -417,11 +337,11 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
         {
             sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
             int cols = sqlite3_column_count(statement), result = 0;
-            
+
             while (true)
             {
                 result = sqlite3_step(statement);
-			
+
                 if (result == SQLITE_ROW)
                 {
                     for (int col = 0; col < cols; col++)
@@ -433,10 +353,10 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
                 else
                     break;
       		}
-            
+
             sqlite3_finalize(statement);
         }
-        
+
         return true;
     }
 }
