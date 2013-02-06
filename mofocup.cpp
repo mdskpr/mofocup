@@ -403,9 +403,9 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             
             while (true)
             {
-   			    result = sqlite3_step(statement);
+                result = sqlite3_step(statement);
 			
-      			if (result == SQLITE_ROW)
+                if (result == SQLITE_ROW)
       			{
       				for (int col = 0; col < cols; col++)
       				{
