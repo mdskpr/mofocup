@@ -378,27 +378,11 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
     }
     else if(command == "rank")
     {
-        messagesToSend newTask; //we got a new message to send
-        newTask.sendTo = playerID; //let's get their player id
-        messageQueue.push(newTask); //push it to the queue
-
-        bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Player ID %i was added to the message queue for /rank data.", newTask.sendTo);
-
-        char* db_err = 0;
-        std::string query = "SELECT (SELECT COUNT(*) FROM `captures` AS c2 WHERE c2.Counter > c1.Counter) + 1 AS row_Num FROM `Captures` AS c1 WHERE `BZID` = '" + std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()) + "' ORDER BY Counter DESC LIMIT 1";
-
-        bz_debugMessage(3, "DEBUG :: MoFo Cup :: The /rank command has been executed");
-        bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
-        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
-        
-        /*
-             **** Still need to compile test this to avoid breaking the build ****
-        
         sqlite3_stmt *statement;
 
         if (sqlite3_prepare_v2(db, "SELECT (SELECT COUNT(*) FROM `Captures` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `Captures` AS c1 WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
         {
-            sqlite3_bind_text(statement, 1, covertToString(playerID).c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
             int cols = sqlite3_column_count(statement), result = 0;
             
             while (true)
@@ -418,15 +402,9 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
       		}
             
             sqlite3_finalize(statement);
-        }*/
-
-        int ret = sqlite3_exec(db, query.c_str(), showRankToPlayer, 0, &db_err);
-
-        if (db_err != 0)
-        {
-            bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
-            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
         }
+        
+        return true;
     }
 }
 
