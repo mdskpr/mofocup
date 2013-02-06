@@ -343,6 +343,39 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 {
     if(command == "cup")
     {
+        sqlite3_stmt *statement;
+
+        if (sqlite3_prepare_v2(db, "SELECT * FROM `Captures` WHERE `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`) ORDER BY `Rating` DESC, `PlayingTime` ASC LIMIT 5", -1, &statement, 0) == SQLITE_OK)
+        {
+            sqlite3_bind_text(statement, 1, std::string(bz_getPublicAddr().c_str()), -1, SQLITE_TRANSIENT);
+            int cols = sqlite3_column_count(statement), result = 0;
+            
+            bz_sendTextMessage(BZ_SERVER, playerID, "Planet MoFo CTF Cup");
+            bz_sendTextMessage(BZ_SERVER, playerID, "--------------------");
+            bz_sendTextMessage(BZ_SERVER, playerID, "        Callsign              Points");
+            
+            while (true)
+            {
+                result = sqlite3_step(statement);
+			
+                if (result == SQLITE_ROW)
+                {
+                    for (int col = 0; col < cols; col++)
+                    {
+                        std::string playerRatio = (char*)sqlite3_column_text(statement, col);
+                    }
+
+                    bz_sendTextMessagef(BZ_SERVER, playerID, "#%i %s %s", playerRatio.c_str());
+                }
+                else
+                    break;
+      		}
+            
+            sqlite3_finalize(statement);
+        }
+        
+        return true;
+    /*
         messagesToSend newTask; //we got a new message to send
         newTask.sendTo = playerID; //let's get their player id
         messageQueue.push(newTask); //push it to the queue
@@ -374,7 +407,7 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
             bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
         }
-
+        */
     }
     else if(command == "rank")
     {
