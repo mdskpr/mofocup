@@ -406,15 +406,15 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
                 result = sqlite3_step(statement);
 			
                 if (result == SQLITE_ROW)
-      			{
-      				for (int col = 0; col < cols; col++)
-      				{
-      					std::string playerRatio = (char*)sqlite3_column_text(statement, col);
-      					bz_sendTextMessagef(BZ_SERVER, playerID, "You're currently #%s in the MoFo Cup", playerRatio.c_str());
-      				}
-      			}
-      			else
-      				break;
+                {
+                    for (int col = 0; col < cols; col++)
+                    {
+                        std::string playerRatio = (char*)sqlite3_column_text(statement, col);
+                        bz_sendTextMessagef(BZ_SERVER, playerID, "You're currently #%s in the MoFo Cup", playerRatio.c_str());
+                    }
+                }
+                else
+                    break;
       		}
             
             sqlite3_finalize(statement);
