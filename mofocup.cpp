@@ -225,12 +225,15 @@ void mofocup::Event(bz_EventData* eventData)
             addCurrentPlayingTime(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str());
             trackNewPlayingTime(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str());
 
-            int points, playingTime, newRank;
+            float newRankDecimal;
+            int points, playingTime, newRank, oldRank;
             int bonusPoints = 8 * (bz_getTeamCount(ctfdata->teamCapped) - bz_getTeamCount(ctfdata->teamCapping)) + 3 * bz_getTeamCount(ctfdata->teamCapped);
             std::string bzid = std::string(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str()); //we're storing the capper's bzid
             sqlite3_stmt *statement;
 
-            if (sqlite3_prepare_v2(db, "SELECT `Points`, `PlayingTime` FROM `Captures` WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
+            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has captured the flag earning %i points towards the MoFo Cup", bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str(), bonusPoints);
+
+            if (sqlite3_prepare_v2(db, "SELECT `Points`, `PlayingTime`, `Rating` FROM `Captures` WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
             {
                 sqlite3_bind_text(statement, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
                 int cols = sqlite3_column_count(statement), result = 0;
@@ -238,11 +241,19 @@ void mofocup::Event(bz_EventData* eventData)
                 result = sqlite3_step(statement);
                 points = atoi((char*)sqlite3_column_text(statement, 0));
                 playingTime = atoi((char*)sqlite3_column_text(statement, 1));
+                oldRank = atoi((char*)sqlite3_column_text(statement, 2));
 
                 sqlite3_finalize(statement);
             }
 
-            newRank = (points)/(playingTime/86400);
+            newRankDecimal = points/(playingTime/86400);
+            newRank = int(newRankDecimal);
+
+            bz_debugMessagef(3, "DEBUG :: MoFo Cup :: %s (%s)", bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str());
+            bz_debugMessagef(3, "DEBUG :: MoFo Cup :: -------------------------");
+            bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Points change: %i -> %i", points, points+bonusPoints);
+            bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Ratio change: %i -> %i", oldRank, newRank);
+            bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Playing time: %i minutes", int(playingTime/60));
 
             std::string query = ""
             "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Callsign, Points, Rating, PlayingTime) "
