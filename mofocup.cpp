@@ -187,9 +187,7 @@ void mofocup::Event(bz_EventData* eventData)
             if (sqlite3_prepare_v2(db, "SELECT `Points`, `PlayingTime`, `Rating` FROM `Captures` WHERE `BZID` = ?", -1, &currentStats, 0) == SQLITE_OK)
             {
                 sqlite3_bind_text(currentStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-                int result = 0;
-
-                result = sqlite3_step(currentStats);
+                int result = sqlite3_step(currentStats);
                 points = atoi((char*)sqlite3_column_text(currentStats, 0));
                 playingTime = atoi((char*)sqlite3_column_text(currentStats, 1));
                 oldRank = atoi((char*)sqlite3_column_text(currentStats, 2));
@@ -231,8 +229,7 @@ void mofocup::Event(bz_EventData* eventData)
                 sqlite3_bind_text(newStats, 10, bzid.c_str(), -1, SQLITE_TRANSIENT);
                 sqlite3_bind_text(newStats, 11, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
 
-                int result = 0;
-                result = sqlite3_step(newStats);
+                int result = sqlite3_step(newStats);
                 sqlite3_finalize(newStats);
             }
             else //could not prepare the statement
@@ -439,20 +436,9 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
         if (sqlite3_prepare_v2(db, "SELECT (SELECT COUNT(*) FROM `Captures` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `Captures` AS c1 WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
         {
             sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
-            int result = 0;
-
-            while (true)
-            {
-                result = sqlite3_step(statement);
-
-                if (result == SQLITE_ROW)
-                {
-                    std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
-                    bz_sendTextMessagef(BZ_SERVER, playerID, "You're currently #%s in the MoFo Cup", playerRatio.c_str());
-                }
-                else
-                    break;
-      		}
+            int result = sqlite3_step(statement);
+            std::string playerRatio = (char*)sqlite3_column_text(statement, 0);
+            bz_sendTextMessagef(BZ_SERVER, playerID, "You're currently #%s in the MoFo Cup", playerRatio.c_str());
 
             sqlite3_finalize(statement);
         }
@@ -533,9 +519,7 @@ void mofocup::updatePlayerRatio(std::string bzid)
     if (sqlite3_prepare_v2(db, "SELECT `Points`, `PlayingTime`, `Rating` FROM `Captures` WHERE `BZID` = ?", -1, &currentStats, 0) == SQLITE_OK)
     {
         sqlite3_bind_text(currentStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-        int cols = sqlite3_column_count(currentStats), result = 0;
-
-        result = sqlite3_step(currentStats);
+        int cols = sqlite3_column_count(currentStats), result = sqlite3_step(currentStats);
         points = atoi((char*)sqlite3_column_text(currentStats, 0));
         playingTime = atoi((char*)sqlite3_column_text(currentStats, 1));
         oldRank = atoi((char*)sqlite3_column_text(currentStats, 2));
