@@ -170,15 +170,17 @@ void mofocup::Event(bz_EventData* eventData)
 
             bz_CTFCaptureEventData_V1* ctfdata = (bz_CTFCaptureEventData_V1*)eventData;
 
-            if (std::string(convertToString(ctfdata->playerCapping)).empty())
+            if (std::string(convertToString(ctfdata->playerCapping)).empty()) //ignore the cap if it's an unregistered player
                 return;
 
+            //update playing time of the capper to accurately calculate the total points
             addCurrentPlayingTime(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str());
             trackNewPlayingTime(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str());
 
+            //initialize some stuff
             float newRankDecimal;
             int points, playingTime, newRank, oldRank;
-            int bonusPoints = 8 * (bz_getTeamCount(ctfdata->teamCapped) - bz_getTeamCount(ctfdata->teamCapping)) + 3 * bz_getTeamCount(ctfdata->teamCapped);
+            int bonusPoints = 8 * (bz_getTeamCount(ctfdata->teamCapped) - bz_getTeamCount(ctfdata->teamCapping)) + 3 * bz_getTeamCount(ctfdata->teamCapped); //calculate the amount of bonus points
             std::string bzid = std::string(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str()); //we're storing the capper's bzid
             sqlite3_stmt *currentStats;
 
@@ -376,9 +378,9 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
                         std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
 
                         if (playerCallsign.length() >= 26) playerCallsign = playerCallsign.substr(0, 26);
-                        while (place.length() != 8) place += " ";
-                        while (playerCallsign.length() != 28) playerCallsign += " ";
-                        while (playerRatio.length() != 6) playerRatio += " ";
+                        while (place.length() < 8) place += " ";
+                        while (playerCallsign.length() < 28) playerCallsign += " ";
+                        while (playerRatio.length() < 6) playerRatio += " ";
 
                         bz_sendTextMessage(BZ_SERVER, playerID, std::string(place + playerCallsign + playerRatio).c_str());
                     }
@@ -409,9 +411,9 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
                         std::string myCallsign = bz_getPlayerByIndex(playerID)->callsign.c_str();
 
                         if (myCallsign.length() >= 26) myCallsign = myCallsign.substr(0, 26);
-                        while (myPosition.length() != 8) myPosition += " ";
-                        while (myCallsign.length() != 28) myCallsign += " ";
-                        while (myRatio.length() != 6) myRatio += " ";
+                        while (myPosition.length() < 8) myPosition += " ";
+                        while (myCallsign.length() < 28) myCallsign += " ";
+                        while (myRatio.length() < 6) myRatio += " ";
 
                         bz_sendTextMessage(BZ_SERVER, playerID, std::string(myPosition + myCallsign + myRatio).c_str());
                     }
