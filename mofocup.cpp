@@ -354,7 +354,7 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 {
     if(command == "cup")
     {
-        if (params->get(0) == "ctf")
+        if (strcmp(params->get(0).c_str(), "ctf") == 0)
         {
             sqlite3_stmt *statement;
 
@@ -380,7 +380,7 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
                         if (playerCallsign.length() >= 26) playerCallsign = playerCallsign.substr(0, 26);
                         while (place.length() < 8) place += " ";
                         while (playerCallsign.length() < 28) playerCallsign += " ";
-                        while (playerRatio.length() < 6) playerRatio += " ";
+                        while (playerRatio.length() <    6) playerRatio += " ";
 
                         bz_sendTextMessage(BZ_SERVER, playerID, std::string(place + playerCallsign + playerRatio).c_str());
                     }
@@ -392,6 +392,9 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 
                 sqlite3_finalize(statement);
             }
+
+            if (std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).empty())
+                return true;
 
             bz_sendTextMessage(BZ_SERVER, playerID, " ");
 
@@ -441,14 +444,20 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 
         sqlite3_stmt *statement;
 
-        if (params->get(0) != "")
+        if (strcmp(params->get(0).c_str(), "") != 0)
         {
             if (sqlite3_prepare_v2(db, "SELECT (SELECT COUNT(*) FROM `Captures` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `Captures` AS c1 WHERE `Callsign` = ?", -1, &statement, 0) == SQLITE_OK)
             {
                 sqlite3_bind_text(statement, 1, params->get(0).c_str(), -1, SQLITE_TRANSIENT);
                 int result = sqlite3_step(statement);
-                std::string playerRatio = (char*)sqlite3_column_text(statement, 0);
-                bz_sendTextMessagef(BZ_SERVER, playerID, "%s is currently #%s in the MoFo Cup", params->get(0).c_str(), playerRatio.c_str());
+
+                if (result == SQLITE_ROW)
+                {
+                    std::string playerRatio = (char*)sqlite3_column_text(statement, 0);
+                    bz_sendTextMessagef(BZ_SERVER, playerID, "%s is currently #%s in the MoFo Cup", params->get(0).c_str(), playerRatio.c_str());
+                }
+                else
+                    bz_sendTextMessagef(BZ_SERVER, playerID, "%s is not part of the current MoFo Cup.", params->get(0).c_str());
 
                 sqlite3_finalize(statement);
             }
