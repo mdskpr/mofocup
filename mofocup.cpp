@@ -226,18 +226,29 @@ void mofocup::Event(bz_EventData* eventData)
             if (sqlite3_prepare_v2(db, query.c_str(), -1, &newStats, 0) == SQLITE_OK)
             {
                 sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 1, convertToString(bonusPoints).c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 1, convertToString(bonusPoints).c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 1, convertToString(newRank).c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_step(newStats);
+                sqlite3_bind_text(newStats, 2, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 3, bzid.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 4, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 5, convertToString(bonusPoints).c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 6, bzid.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 7, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 8, convertToString(bonusPoints).c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 9, convertToString(newRank).c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 10, bzid.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 11, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+
+                int cols = sqlite3_column_count(newStats), result = 0;
+
+                while (true)
+                {
+                    result = sqlite3_step(newStats);
+                }
+
                 sqlite3_finalize(newStats);
+            }
+            else
+            {
+                bz_debugMessagef(2, "Error %i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
             }
 
             /*bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
