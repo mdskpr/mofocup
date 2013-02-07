@@ -68,6 +68,7 @@ public:
     virtual void doQuery(std::string query);
     virtual std::string convertToString(int myInt);
     virtual void trackNewPlayingTime(std::string bzid);
+    virtual void updatePlayerRatio(std::string bzid);
 
     //we're storing the time people play so we can rank players based on how quick they make as many caps
     struct playingTimeStructure
@@ -76,6 +77,8 @@ public:
         double joinTime;
     };
     std::vector<playingTimeStructure> playingTime;
+
+    double lastDatabaseUpdate;
 };
 
 BZ_PLUGIN(mofocup);
@@ -111,7 +114,7 @@ void mofocup::Init(const char* commandLine)
             doQuery("CREATE TABLE Captures(BZID INTEGER, CupID INTEGER, Counter INTEGER default (0), primary key(BZID,CupID))");
         }
 
-        if (!Register(bz_ePlayerDieEvent) || !Register(bz_eCaptureEvent) || !Register(bz_ePlayerPartEvent) || !Register(bz_ePlayerJoinEvent)) //unload the plugin if any events fail to register
+        if (!Register(bz_ePlayerDieEvent) || !Register(bz_eCaptureEvent) || !Register(bz_ePlayerPartEvent) || !Register(bz_ePlayerJoinEvent) || !Register(bz_ePlayerPausedEvent) || !Register(bz_eTickEvent)) //unload the plugin if any events fail to register
         {
             bz_debugMessage(0, "DEBUG :: MoFo Cup :: A BZFS event failed to load.");
             bz_debugMessage(0, "DEBUG :: MoFo Cup :: Unloading MoFoCup plugin...");
@@ -167,7 +170,7 @@ void mofocup::Event(bz_EventData* eventData)
 
             bz_CTFCaptureEventData_V1* ctfdata = (bz_CTFCaptureEventData_V1*)eventData;
 
-            if (convertToString(ctfdata->playerCapping).empty())
+            if (std::string(convertToString(ctfdata->playerCapping)).empty())
                 return;
 
             addCurrentPlayingTime(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str());
@@ -194,7 +197,7 @@ void mofocup::Event(bz_EventData* eventData)
                 sqlite3_finalize(currentStats);
             }
 
-            newRankDecimal = (float)points/(float)(playingTime/86400);
+            newRankDecimal = (float)points/(float)((float)playingTime/86400.0);
             newRank = int(newRankDecimal);
 
             bz_debugMessagef(3, "DEBUG :: MoFo Cup :: %s (%s)", bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str());
@@ -264,7 +267,7 @@ void mofocup::Event(bz_EventData* eventData)
 
             bz_PlayerJoinPartEventData_V1* joindata = (bz_PlayerJoinPartEventData_V1*)eventData;
 
-            if (std::string(joindata->record->bzID.c_str()).empty() || joindata->record->team == eObservers)
+            if (std::string(joindata->record->bzID.c_str()).empty() || joindata->record->team == eObservers) //don't do anything if the player is an observer or is not registered
                 return;
 
             bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has started to play, now recording playing time.", joindata->record->callsign.c_str(), joindata->record->bzID.c_str());
@@ -288,10 +291,60 @@ void mofocup::Event(bz_EventData* eventData)
 
             bz_PlayerJoinPartEventData_V1* partdata = (bz_PlayerJoinPartEventData_V1*)eventData;
 
-            if (std::string(partdata->record->bzID.c_str()).empty() || partdata->record->team == eObservers)
+            if (std::string(partdata->record->bzID.c_str()).empty() || partdata->record->team == eObservers) //don't do anything if the player is an observer or is not registered
                 return;
 
-            addCurrentPlayingTime(partdata->record->bzID.c_str(), partdata->record->callsign.c_str());
+            addCurrentPlayingTime(partdata->record->bzID.c_str(), partdata->record->callsign.c_str()); //they left, let's add their playing time to the database
+        }
+        break;
+
+        case bz_ePlayerPausedEvent:
+        {
+            /*
+                MoFo Cup :: Notes
+                -----------------
+
+                In order not to penalize players for pausing, we will not count
+                the amount of time they have played when paused.
+
+            */
+
+            bz_PlayerPausedEventData_V1* pausedata = (bz_PlayerPausedEventData_V1*)eventData;
+
+            if (std::string(bz_getPlayerByIndex(pausedata->playerID)->bzID.c_str()).empty()) //don't bother if the player isn't registered
+                return;
+
+            if (pausedata->pause) //when a player pauses, we add their current playing time to the database
+            {
+                addCurrentPlayingTime(bz_getPlayerByIndex(pausedata->playerID)->bzID.c_str(), bz_getPlayerByIndex(pausedata->playerID)->callsign.c_str());
+            }
+            else //start tracking a player's playing time when they have unpaused
+            {
+                trackNewPlayingTime(bz_getPlayerByIndex(pausedata->playerID)->bzID.c_str());
+            }
+        }
+        break;
+
+        case bz_eTickEvent:
+        {
+            if (lastDatabaseUpdate + 300 < bz_getCurrentTime())
+            {
+                lastDatabaseUpdate = bz_getCurrentTime();
+
+                bz_APIIntList *playerList = bz_newIntList();
+                bz_getPlayerIndexList(playerList);
+
+                for (unsigned int i = 0; i < playerList->size(); i++)
+                {
+                    if (std::string(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str()).empty())
+                        continue;
+
+                    addCurrentPlayingTime(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(), bz_getPlayerByIndex(playerList->get(i))->callsign.c_str());
+                    trackNewPlayingTime(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str());
+                }
+
+                bz_deleteIntList(playerList);
+            }
         }
         break;
 
@@ -371,6 +424,10 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 
                 sqlite3_finalize(statement);
             }
+        }
+        else
+        {
+            bz_sendTextMessage(BZ_SERVER, playerID, "Usage: /cup <bounty | ctf | geno | kills>");
         }
 
         return true;
@@ -469,3 +526,22 @@ void mofocup::trackNewPlayingTime(std::string bzid)
 
     playingTime.push_back(newPlayingTime);
 }
+
+/*void mofocup::updatePlayerRatio(std::string bzid)
+{
+    if (sqlite3_prepare_v2(db, "SELECT `Points`, `PlayingTime`, `Rating` FROM `Captures` WHERE `BZID` = ?", -1, &currentStats, 0) == SQLITE_OK)
+    {
+        sqlite3_bind_text(currentStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
+        int cols = sqlite3_column_count(currentStats), result = 0;
+
+        result = sqlite3_step(currentStats);
+        points = atoi((char*)sqlite3_column_text(currentStats, 0));
+        playingTime = atoi((char*)sqlite3_column_text(currentStats, 1));
+        oldRank = atoi((char*)sqlite3_column_text(currentStats, 2));
+
+        sqlite3_finalize(currentStats);
+    }
+
+    newRankDecimal = (float)points/(float)((float)playingTime/86400.0);
+    newRank = int(newRankDecimal);
+}*/
