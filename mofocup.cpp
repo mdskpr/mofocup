@@ -431,16 +431,37 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
     }
     else if(command == "rank")
     {
+        if (std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).empty())
+        {
+            bz_sendTextMessage(BZ_SERVER, playerID, "You are not a registered BZFlag player, please register at 'http://forums.bzflag.org' in order to join the MoFo Cup.");
+            return true;
+        }
+
         sqlite3_stmt *statement;
 
-        if (sqlite3_prepare_v2(db, "SELECT (SELECT COUNT(*) FROM `Captures` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `Captures` AS c1 WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
+        if (params->get(0) != "")
         {
-            sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
-            int result = sqlite3_step(statement);
-            std::string playerRatio = (char*)sqlite3_column_text(statement, 0);
-            bz_sendTextMessagef(BZ_SERVER, playerID, "You're currently #%s in the MoFo Cup", playerRatio.c_str());
+            if (sqlite3_prepare_v2(db, "SELECT (SELECT COUNT(*) FROM `Captures` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `Captures` AS c1 WHERE `Callsign` = ?", -1, &statement, 0) == SQLITE_OK)
+            {
+                sqlite3_bind_text(statement, 1, params->get(0).c_str(), -1, SQLITE_TRANSIENT);
+                int result = sqlite3_step(statement);
+                std::string playerRatio = (char*)sqlite3_column_text(statement, 0);
+                bz_sendTextMessagef(BZ_SERVER, playerID, "%s is currently #%s in the MoFo Cup", params->get(0).c_str(), playerRatio.c_str());
 
-            sqlite3_finalize(statement);
+                sqlite3_finalize(statement);
+            }
+        }
+        else
+        {
+            if (sqlite3_prepare_v2(db, "SELECT (SELECT COUNT(*) FROM `Captures` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `Captures` AS c1 WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
+            {
+                sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
+                int result = sqlite3_step(statement);
+                std::string playerRatio = (char*)sqlite3_column_text(statement, 0);
+                bz_sendTextMessagef(BZ_SERVER, playerID, "You're currently #%s in the MoFo Cup", playerRatio.c_str());
+
+                sqlite3_finalize(statement);
+            }
         }
 
         return true;
