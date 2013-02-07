@@ -216,10 +216,10 @@ void mofocup::Event(bz_EventData* eventData)
             "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Callsign, Points, Rating, PlayingTime) "
             "VALUES (?, "
             "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
-            "(SELECT `Callsign` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = ? AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = ? AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)), "
+            "(SELECT `Callsign` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = ? AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = ? AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
             "(SELECT COALESCE((SELECT `Points` + ? FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = ? AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = ? AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), ?)), "
             "?, "
-            "(SELECT `PlayingTime` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = ? AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = ? AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)";
+            "(SELECT `PlayingTime` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = ? AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = ? AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`))";
 
             sqlite3_stmt *newStats;
 
@@ -246,9 +246,9 @@ void mofocup::Event(bz_EventData* eventData)
 
                 sqlite3_finalize(newStats);
             }
-            else
+            else //could not prepare the statement
             {
-                bz_debugMessagef(2, "Error %i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
+                bz_debugMessagef(2, "Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
             }
 
             /*bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
