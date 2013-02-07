@@ -167,7 +167,7 @@ void mofocup::Event(bz_EventData* eventData)
 
             bz_CTFCaptureEventData_V1* ctfdata = (bz_CTFCaptureEventData_V1*)eventData;
 
-            if (!atoi(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str()) > 0)
+            if (convertToString(ctfdata->playerCapping).empty())
                 return;
 
             addCurrentPlayingTime(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str());
@@ -177,21 +177,21 @@ void mofocup::Event(bz_EventData* eventData)
             int points, playingTime, newRank, oldRank;
             int bonusPoints = 8 * (bz_getTeamCount(ctfdata->teamCapped) - bz_getTeamCount(ctfdata->teamCapping)) + 3 * bz_getTeamCount(ctfdata->teamCapped);
             std::string bzid = std::string(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str()); //we're storing the capper's bzid
-            sqlite3_stmt *statement;
+            sqlite3_stmt *currentStats;
 
             bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has captured the flag earning %i points towards the MoFo Cup", bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str(), bonusPoints);
 
-            if (sqlite3_prepare_v2(db, "SELECT `Points`, `PlayingTime`, `Rating` FROM `Captures` WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
+            if (sqlite3_prepare_v2(db, "SELECT `Points`, `PlayingTime`, `Rating` FROM `Captures` WHERE `BZID` = ?", -1, &currentStats, 0) == SQLITE_OK)
             {
-                sqlite3_bind_text(statement, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-                int cols = sqlite3_column_count(statement), result = 0;
+                sqlite3_bind_text(currentStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
+                int cols = sqlite3_column_count(currentStats), result = 0;
 
-                result = sqlite3_step(statement);
-                points = atoi((char*)sqlite3_column_text(statement, 0));
-                playingTime = atoi((char*)sqlite3_column_text(statement, 1));
-                oldRank = atoi((char*)sqlite3_column_text(statement, 2));
+                result = sqlite3_step(currentStats);
+                points = atoi((char*)sqlite3_column_text(currentStats, 0));
+                playingTime = atoi((char*)sqlite3_column_text(currentStats, 1));
+                oldRank = atoi((char*)sqlite3_column_text(currentStats, 2));
 
-                sqlite3_finalize(statement);
+                sqlite3_finalize(currentStats);
             }
 
             newRankDecimal = (float)points/(float)(playingTime/86400);
@@ -203,16 +203,44 @@ void mofocup::Event(bz_EventData* eventData)
             bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Ratio change: %i -> %i", oldRank, newRank);
             bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Playing time: %i minutes", int(playingTime/60));
 
-            std::string query = ""
+            /*std::string query = ""
             "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Callsign, Points, Rating, PlayingTime) "
             "VALUES ('" + bzid + "', "
             "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
             "(SELECT `Callsign` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)), "
             "(SELECT COALESCE((SELECT `Points` + '" + convertToString(bonusPoints) + "' FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), '" + convertToString(bonusPoints) + "')), "
             "" + convertToString(newRank) + ", "
-            "(SELECT `PlayingTime` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)";
+            "(SELECT `PlayingTime` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)";*/
 
-            bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
+            std::string query = ""
+            "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Callsign, Points, Rating, PlayingTime) "
+            "VALUES (?, "
+            "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
+            "(SELECT `Callsign` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = ? AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = ? AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)), "
+            "(SELECT COALESCE((SELECT `Points` + ? FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = ? AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = ? AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), ?)), "
+            "?, "
+            "(SELECT `PlayingTime` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = ? AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = ? AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)";
+
+            sqlite3_stmt *newStats;
+
+            if (sqlite3_prepare_v2(db, query.c_str(), -1, &newStats, 0) == SQLITE_OK)
+            {
+                sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 1, convertToString(bonusPoints).c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 1, convertToString(bonusPoints).c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 1, convertToString(newRank).c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(newStats, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_step(newStats);
+                sqlite3_finalize(newStats);
+            }
+
+            /*bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
             bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
 
             char* db_err = 0;
@@ -222,7 +250,7 @@ void mofocup::Event(bz_EventData* eventData)
             {
                 bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
                 bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
-            }
+            }*/
         }
         break;
 
@@ -291,40 +319,73 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 {
     if(command == "cup")
     {
-        sqlite3_stmt *statement;
-
-        if (sqlite3_prepare_v2(db, "SELECT `Callsign`, `Rating` FROM `Captures` WHERE `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`) ORDER BY `Rating` DESC, `PlayingTime` ASC LIMIT 5", -1, &statement, 0) == SQLITE_OK)
+        if (params->get(0) == "ctf")
         {
-            sqlite3_bind_text(statement, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-            int cols = sqlite3_column_count(statement), result = 0, counter = 1;
+            sqlite3_stmt *statement;
 
-            bz_sendTextMessage(BZ_SERVER, playerID, "Planet MoFo CTF Cup");
-            bz_sendTextMessage(BZ_SERVER, playerID, "--------------------");
-            bz_sendTextMessage(BZ_SERVER, playerID, "        Callsign                    Points");
-
-            while (true)
+            if (sqlite3_prepare_v2(db, "SELECT `Callsign`, `Rating` FROM `Captures` WHERE `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`) ORDER BY `Rating` DESC, `PlayingTime` ASC LIMIT 5", -1, &statement, 0) == SQLITE_OK)
             {
-                result = sqlite3_step(statement);
+                sqlite3_bind_text(statement, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+                int cols = sqlite3_column_count(statement), result = 0, counter = 1;
 
-                if (result == SQLITE_ROW)
+                bz_sendTextMessage(BZ_SERVER, playerID, "Planet MoFo CTF Cup");
+                bz_sendTextMessage(BZ_SERVER, playerID, "--------------------");
+                bz_sendTextMessage(BZ_SERVER, playerID, "        Callsign                    Points");
+
+                while (true)
                 {
-                    std::string place = "#" + convertToString(counter);
-                    std::string playerCallsign = (char*)sqlite3_column_text(statement, 0);
-                    std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
+                    result = sqlite3_step(statement);
 
-                    while (place.length() != 8) place += " ";
-                    while (playerCallsign.length() != 28) playerCallsign += " ";
-                    while (playerRatio.length() != 6) playerRatio += " ";
+                    if (result == SQLITE_ROW)
+                    {
+                        std::string place = "#" + convertToString(counter);
+                        std::string playerCallsign = (char*)sqlite3_column_text(statement, 0);
+                        std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
 
-                    bz_sendTextMessage(BZ_SERVER, playerID, std::string(place + playerCallsign + playerRatio).c_str());
+                        while (place.length() != 8) place += " ";
+                        while (playerCallsign.length() != 28) playerCallsign += " ";
+                        while (playerRatio.length() != 6) playerRatio += " ";
+
+                        bz_sendTextMessage(BZ_SERVER, playerID, std::string(place + playerCallsign + playerRatio).c_str());
+                    }
+                    else
+                        break;
+
+                    counter++;
                 }
-                else
-                    break;
 
-                counter++;
-      		}
+                sqlite3_finalize(statement);
+            }
 
-            sqlite3_finalize(statement);
+            bz_sendTextMessage(BZ_SERVER, playerID, " ");
+
+            if (sqlite3_prepare_v2(db, "SELECT `Rating`, (SELECT COUNT(*) FROM `Captures` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `Captures` AS c1 WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
+            {
+                sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
+                int cols = sqlite3_column_count(statement), result = 0;
+
+                while (true)
+                {
+                    result = sqlite3_step(statement);
+
+                    if (result == SQLITE_ROW)
+                    {
+                        std::string myRatio = (char*)sqlite3_column_text(statement, 0);
+                        std::string myPosition = std::string("#") + (char*)sqlite3_column_text(statement, 1);
+                        std::string myCallsign = bz_getPlayerByIndex(playerID)->callsign.c_str();
+
+                        while (myPosition.length() != 8) myPosition += " ";
+                        while (myCallsign.length() != 28) myCallsign += " ";
+                        while (myRatio.length() != 6) myRatio += " ";
+
+                        bz_sendTextMessage(BZ_SERVER, playerID, std::string(myPosition + myCallsign + myRatio).c_str());
+                    }
+                    else
+                        break;
+                }
+
+                sqlite3_finalize(statement);
+            }
         }
 
         return true;
