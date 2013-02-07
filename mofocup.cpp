@@ -203,15 +203,6 @@ void mofocup::Event(bz_EventData* eventData)
             bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Ratio change: %i -> %i", oldRank, newRank);
             bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Playing time: %i minutes", int(playingTime/60));
 
-            /*std::string query = ""
-            "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Callsign, Points, Rating, PlayingTime) "
-            "VALUES ('" + bzid + "', "
-            "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
-            "(SELECT `Callsign` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)), "
-            "(SELECT COALESCE((SELECT `Points` + '" + convertToString(bonusPoints) + "' FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` AND `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), '" + convertToString(bonusPoints) + "')), "
-            "" + convertToString(newRank) + ", "
-            "(SELECT `PlayingTime` FROM `Captures`, `Cups` WHERE `Captures`.`BZID` = '" + bzid + "' AND `Captures`.`CupID` = `Cups`.`CupID` and `ServerID` = '" + std::string(bz_getPublicAddr().c_str()) + "' AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)";*/
-
             std::string query = ""
             "INSERT OR REPLACE INTO `Captures` (BZID, CupID, Callsign, Points, Rating, PlayingTime) "
             "VALUES (?, "
@@ -238,30 +229,13 @@ void mofocup::Event(bz_EventData* eventData)
                 sqlite3_bind_text(newStats, 11, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
 
                 int cols = sqlite3_column_count(newStats), result = 0;
-
-                while (true)
-                {
-                    result = sqlite3_step(newStats);
-                }
-
+                result = sqlite3_step(newStats);
                 sqlite3_finalize(newStats);
             }
             else //could not prepare the statement
             {
                 bz_debugMessagef(2, "Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
             }
-
-            /*bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
-            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
-
-            char* db_err = 0;
-            //int ret = sqlite3_exec(db, query.c_str(), announceCaptureEvent, 0, &db_err);
-
-            if (db_err != 0)
-            {
-                bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
-                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
-            }*/
         }
         break;
 
