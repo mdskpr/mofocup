@@ -77,7 +77,7 @@ public:
     virtual void doQuery(std::string query);
     virtual std::string convertToString(int myInt);
     virtual void trackNewPlayingTime(std::string bzid);
-    virtual void updatePlayerRatio(std::string bzid);
+    virtual void updatePlayerRatio(std::string bzid, std::string cup);
 
     //we're storing the time people play so we can rank players based on how quick they make as many caps
     struct playingTimeStructure
@@ -315,7 +315,7 @@ void mofocup::Event(bz_EventData* eventData)
                 return;
 
             addCurrentPlayingTime(partdata->record->bzID.c_str(), partdata->record->callsign.c_str()); //they left, let's add their playing time to the database
-            updatePlayerRatio(partdata->record->bzID.c_str());
+            updatePlayerRatio(partdata->record->bzID.c_str(), "CTF");
         }
         break;
 
@@ -357,7 +357,7 @@ void mofocup::Event(bz_EventData* eventData)
                         continue;
 
                     addCurrentPlayingTime(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(), bz_getPlayerByIndex(playerList->get(i))->callsign.c_str());
-                    updatePlayerRatio(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str());
+                    updatePlayerRatio(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(), "CTF");
                     trackNewPlayingTime(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str());
                 }
 
@@ -579,13 +579,14 @@ void mofocup::trackNewPlayingTime(std::string bzid)
     playingTime.push_back(newPlayingTime);
 }
 
-void mofocup::updatePlayerRatio(std::string bzid)
+void mofocup::updatePlayerRatio(std::string bzid, std::string cup)
 {
     float newRankDecimal;
     int result, points, playingTime, oldRank, newRank;
+    std::string currentStatsQuery = "SELECT `" + cup + "Cup`.`Points`, `PlayingTime`.`PlayingTime`, `" + + "Cup`.`Rating` FROM `" + + "Cup`, `PlayingTime` WHERE `PlayingTime`.`BZID` = `" + cup + "`.`BZID` AND `" + cup + "Cup`.`BZID` = ?";
     sqlite3_stmt *currentStats;
 
-    if (sqlite3_prepare_v2(db, "SELECT `Points`, `PlayingTime`, `Rating` FROM `CTFCup` WHERE `BZID` = ?", -1, &currentStats, 0) == SQLITE_OK)
+    if (sqlite3_prepare_v2(db, currentStatsQuery.c_str(), -1, &currentStats, 0) == SQLITE_OK)
     {
         sqlite3_bind_text(currentStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
         int cols = sqlite3_column_count(currentStats), result = sqlite3_step(currentStats);
@@ -598,15 +599,13 @@ void mofocup::updatePlayerRatio(std::string bzid)
 
     newRankDecimal = (float)points/(float)((float)playingTime/86400.0);
     newRank = int(newRankDecimal);
-
+    
     std::string query = ""
-    "INSERT OR REPLACE INTO `CTFCup` (BZID, CupID, Callsign, Points, Rating, PlayingTime) "
+    "INSERT OR REPLACE INTO `" + cup + "Cup` (BZID, CupID, Points, Rating) "
     "VALUES (?, "
-    "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
-    "(SELECT `Callsign` FROM `CTFCup`, `Cups` WHERE `CTFCup`.`BZID` = ? AND `CTFCup`.`CupID` = `Cups`.`CupID` and `ServerID` = ? AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
-    "(SELECT `Points` FROM `CTFCup`, `Cups` WHERE `CTFCup`.`BZID` = ? AND `CTFCup`.`CupID` = `Cups`.`CupID` AND `ServerID` = ? AND `CupType` = 'capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
-    "?, "
-    "(SELECT `PlayingTime` FROM `CTFCup`, `Cups` WHERE `CTFCup`.`BZID` = ? AND `CTFCup`.`CupID` = `Cups`.`CupID` and `ServerID` = ? AND `CupType` ='capture' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`))";
+    "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
+    "(SELECT `Points` FROM `" + cup + "Cup`, `Cups` WHERE `" + cup + "Cup`.`BZID` = ? AND `" + cup + "Cup`.`CupID` = `Cups`.`CupID` AND `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
+    "?)";
 
     sqlite3_stmt *newStats;
 
@@ -616,11 +615,7 @@ void mofocup::updatePlayerRatio(std::string bzid)
         sqlite3_bind_text(newStats, 2, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(newStats, 3, bzid.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(newStats, 4, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(newStats, 5, bzid.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(newStats, 6, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(newStats, 7, convertToString(newRank).c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(newStats, 8, bzid.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(newStats, 9, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(newStats, 5, convertToString(newRank).c_str(), -1, SQLITE_TRANSIENT);
 
         int cols = sqlite3_column_count(newStats), result = 0;
         result = sqlite3_step(newStats);
