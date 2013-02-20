@@ -514,7 +514,7 @@ void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
                 "VALUES (?, "
                 "?, "
                 "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`), "
-                "(SELECT COALESCE((SELECT `PlayingTime` + ? FROM `CTFCup`, `Cups` WHERE `CTFCup`.`BZID` = ? AND `CTFCup`.`CupID` = `Cups`.`CupID` AND `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`), '1')";
+                "(SELECT COALESCE((SELECT `PlayingTime` + ? FROM `PlayingTime`, `Cups` WHERE `PlayingTime`.`BZID` = ? AND `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`), '1')";
                 
                 sqlite3_stmt *newPlayingTime;
 
