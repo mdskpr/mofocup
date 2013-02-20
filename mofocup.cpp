@@ -74,8 +74,9 @@ public:
     virtual bool SlashCommand(int playerID, bz_ApiString command, bz_ApiString message, bz_APIStringList *params);
 
     virtual void addCurrentPlayingTime(std::string bzid, std::string callsign);
-    virtual void doQuery(std::string query);
     virtual std::string convertToString(int myInt);
+    virtual void doQuery(std::string query);
+    virtual void incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement);
     virtual void trackNewPlayingTime(std::string bzid);
     virtual void updatePlayerRatio(std::string bzid);
 
@@ -120,13 +121,23 @@ void mofocup::Init(const char* commandLine)
             bz_unloadPlugin(Name());
         }
 
-        if (db != 0) //if the database is empty, let's create the tables needed
+        if (db != 0) //if the database connection succeed and the database is empty, let's create the tables needed
         {
-            doQuery("CREATE TABLE Cups(CupID INTEGER, ServerID TEXT, StartTime TEXT, EndTime Text, CupType Text, primary key (CupID))");
-            doQuery("CREATE TABLE Captures(BZID INTEGER, CupID INTEGER, Counter INTEGER default (0), primary key(BZID,CupID))");
+            doQuery("CREATE TABLE IF NOT EXISTS \"PlayingTime\" (\"BZID\" TEXT NOT NULL DEFAULT (0), \"Callsign\" TEXT NOT NULL DEFAULT ('Anonymous'), \"CupID\" INTEGER NOT NULL DEFAULT (0), \"PlayingTime\" INTEGER NOT NULL DEFAULT (0));");
+            doQuery("CREATE TABLE IF NOT EXISTS \"CTFCup\" (\"BZID\" INTEGER NOT NULL,\"CupID\" INTEGER NOT NULL DEFAULT (0), \"Points\" INTEGER NOT NULL DEFAULT (0), \"Rating\" INTEGER NOT NULL DEFAULT (0));");
+            doQuery("CREATE TABLE IF NOT EXISTS \"BountyCup\" (\"BZID\" TEXT NOT NULL DEFAULT ('\"0\"'), \"CupID\" INTEGER NOT NULL DEFAULT (0), \"BountyPoints\" INTEGER NOT NULL DEFAULT (0), \"Rating\" INTEGER  NOT NULL  DEFAULT (0));");
+            doQuery("CREATE TABLE IF NOT EXISTS \"GenoCup\" (\"BZID\" TEXT NOT NULL DEFAULT ('\"0\"'), \"CupID\" INTEGER NOT NULL DEFAULT (0), \"Points\" INTEGER NOT NULL DEFAULT (0), \"Rating\" INTEGER NOT NULL DEFAULT (0));");
+            doQuery("CREATE TABLE IF NOT EXISTS \"KillsCup\" (\"BZID\" TEXT NOT NULL DEFAULT ('\"0\"'), \"CupID\" INTEGER NOT NULL DEFAULT (0), \"Points\" INTEGER NOT NULL DEFAULT (0), \"Ratings\" INTEGER NOT NULL DEFAULT (0));");
+            doQuery("CREATE TABLE IF NOT EXISTS \"Cups\" (\"CupID\" INTEGER NOT NULL, \"ServerID\" TEXT NOT NULL, \"StartTime\" INTEGER NOT NULL, \"EndTime\" INTEGER NOT NULL);");
         }
 
-        if (!Register(bz_ePlayerDieEvent) || !Register(bz_eCaptureEvent) || !Register(bz_ePlayerPartEvent) || !Register(bz_ePlayerJoinEvent) || !Register(bz_ePlayerPausedEvent) || !Register(bz_eTickEvent)) //unload the plugin if any events fail to register
+        //unload the plugin if any events fail to register
+        if (!Register(bz_ePlayerDieEvent) ||
+            !Register(bz_eCaptureEvent) ||
+            !Register(bz_ePlayerPartEvent) ||
+            !Register(bz_ePlayerJoinEvent) ||
+            !Register(bz_ePlayerPausedEvent) ||
+            !Register(bz_eTickEvent))
         {
             bz_debugMessage(0, "DEBUG :: MoFo Cup :: A BZFS event failed to load.");
             bz_debugMessage(0, "DEBUG :: MoFo Cup :: Unloading MoFoCup plugin...");
@@ -181,69 +192,23 @@ void mofocup::Event(bz_EventData* eventData)
             */
 
             bz_CTFCaptureEventData_V1* ctfdata = (bz_CTFCaptureEventData_V1*)eventData;
+            std::string bzid = bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str(),
+                        callsign = bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str();
 
-            if (std::string(convertToString(ctfdata->playerCapping)).empty()) //ignore the cap if it's an unregistered player
+            if (bzid.empty()) //ignore the cap if it's an unregistered player
                 return;
-
+                
+            
             //update playing time of the capper to accurately calculate the total points
-            addCurrentPlayingTime(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str());
-            trackNewPlayingTime(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str());
+            addCurrentPlayingTime(bzid, callsign);
+            trackNewPlayingTime(bzid);
 
-            //initialize some stuff
-            float newRankDecimal;
-            int points, playingTime, newRank, oldRank;
             int bonusPoints = 8 * (bz_getTeamCount(ctfdata->teamCapped) - bz_getTeamCount(ctfdata->teamCapping)) + 3 * bz_getTeamCount(ctfdata->teamCapped); //calculate the amount of bonus points
-            std::string bzid = std::string(bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str()); //we're storing the capper's bzid
-            sqlite3_stmt *currentStats;
+            
+            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has captured the flag earning %i points towards the MoFo Cup", callsign.c_str(), bzid.c_str(), bonusPoints);
 
-            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has captured the flag earning %i points towards the MoFo Cup", bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str(), bonusPoints);
-
-            if (sqlite3_prepare_v2(db, "SELECT `CTFCup`.`Points`, `PlayingTime`.`PlayingTime`, `CTFCup`.`Rating` FROM `CTFCup` WHERE `CTFCup`.`BZID` = `PlayingTime`.`BZID` AND `BZID` = ?", -1, &currentStats, 0) == SQLITE_OK)
-            {
-                sqlite3_bind_text(currentStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-                int result = sqlite3_step(currentStats);
-                points = atoi((char*)sqlite3_column_text(currentStats, 0));
-                playingTime = atoi((char*)sqlite3_column_text(currentStats, 1));
-                oldRank = atoi((char*)sqlite3_column_text(currentStats, 2));
-
-                sqlite3_finalize(currentStats);
-            }
-
-            newRankDecimal = (float)points/(float)((float)playingTime/86400.0);
-            newRank = int(newRankDecimal);
-
-            bz_debugMessagef(3, "DEBUG :: MoFo Cup :: %s (%s)", bz_getPlayerByIndex(ctfdata->playerCapping)->callsign.c_str(), bz_getPlayerByIndex(ctfdata->playerCapping)->bzID.c_str());
-            bz_debugMessagef(3, "DEBUG :: MoFo Cup :: -------------------------");
-            bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Points change: %i -> %i", points, points+bonusPoints);
-            bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Ratio change: %i -> %i", oldRank, newRank);
-            bz_debugMessagef(3, "DEBUG :: MoFo Cup :: Playing time: %i minutes", int(playingTime/60));
-
-            std::string query = ""
-            "INSERT OR REPLACE INTO `CTFCup` (BZID, CupID, Points, Rating) "
-            "VALUES (?, "
-            "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
-            "(SELECT COALESCE((SELECT `Points` + ? FROM `CTFCup`, `Cups` WHERE `CTFCup`.`BZID` = ? AND `CTFCup`.`CupID` = `Cups`.`CupID` AND `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), ?)), "
-            "?)";
-
-            sqlite3_stmt *newStats;
-
-            if (sqlite3_prepare_v2(db, query.c_str(), -1, &newStats, 0) == SQLITE_OK)
-            {
-                sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 2, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 3, convertToString(bonusPoints).c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 4, bzid.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 5, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 6, convertToString(bonusPoints).c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(newStats, 7, convertToString(newRank).c_str(), -1, SQLITE_TRANSIENT);
-
-                int result = sqlite3_step(newStats);
-                sqlite3_finalize(newStats);
-            }
-            else //could not prepare the statement
-            {
-                bz_debugMessagef(2, "Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
-            }
+            incrementPoints(bzid, "CTF", convertToString(bonusPoints));
+            updatePlayerRatio(bzid);
         }
         break;
 
@@ -280,12 +245,14 @@ void mofocup::Event(bz_EventData* eventData)
             */
 
             bz_PlayerJoinPartEventData_V1* joindata = (bz_PlayerJoinPartEventData_V1*)eventData;
+            std::string bzid = joindata->record->bzID.c_str(),
+                        callsign = joindata->record->callsign.c_str();
 
-            if (std::string(joindata->record->bzID.c_str()).empty() || joindata->record->team == eObservers) //don't do anything if the player is an observer or is not registered
+            if (bzid.empty() || joindata->record->team == eObservers) //don't do anything if the player is an observer or is not registered
                 return;
 
-            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has started to play, now recording playing time.", joindata->record->callsign.c_str(), joindata->record->bzID.c_str());
-            trackNewPlayingTime(joindata->record->bzID.c_str());
+            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has started to play, now recording playing time.", callsign.c_str(), bzid.c_str());
+            trackNewPlayingTime(bzid);
         }
         break;
 
@@ -304,12 +271,14 @@ void mofocup::Event(bz_EventData* eventData)
             */
 
             bz_PlayerJoinPartEventData_V1* partdata = (bz_PlayerJoinPartEventData_V1*)eventData;
+            std::string bzid = partdata->record->bzID.c_str(),
+                        callsign = partdata->record->callsign.c_str();
 
-            if (std::string(partdata->record->bzID.c_str()).empty() || partdata->record->team == eObservers) //don't do anything if the player is an observer or is not registered
+            if (bzid.empty() || partdata->record->team == eObservers) //don't do anything if the player is an observer or is not registered
                 return;
 
-            addCurrentPlayingTime(partdata->record->bzID.c_str(), partdata->record->callsign.c_str()); //they left, let's add their playing time to the database
-            updatePlayerRatio(partdata->record->bzID.c_str());
+            addCurrentPlayingTime(bzid, callsign); //they left, let's add their playing time to the database
+            updatePlayerRatio(bzid);
         }
         break;
 
@@ -325,14 +294,16 @@ void mofocup::Event(bz_EventData* eventData)
             */
 
             bz_PlayerPausedEventData_V1* pausedata = (bz_PlayerPausedEventData_V1*)eventData;
+            std::string bzid = bz_getPlayerByIndex(pausedata->playerID)->bzID.c_str(),
+                        callsign = bz_getPlayerByIndex(pausedata->playerID)->callsign.c_str();
 
-            if (std::string(bz_getPlayerByIndex(pausedata->playerID)->bzID.c_str()).empty()) //don't bother if the player isn't registered
+            if (bzid.empty()) //don't bother if the player isn't registered
                 return;
 
             if (pausedata->pause) //when a player pauses, we add their current playing time to the database
-                addCurrentPlayingTime(bz_getPlayerByIndex(pausedata->playerID)->bzID.c_str(), bz_getPlayerByIndex(pausedata->playerID)->callsign.c_str());
+                addCurrentPlayingTime(bzid, callsign);
             else //start tracking a player's playing time when they have unpaused
-                trackNewPlayingTime(bz_getPlayerByIndex(pausedata->playerID)->bzID.c_str());
+                trackNewPlayingTime(bzid);
         }
         break;
 
@@ -347,12 +318,15 @@ void mofocup::Event(bz_EventData* eventData)
 
                 for (unsigned int i = 0; i < playerList->size(); i++)
                 {
-                    if (std::string(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str()).empty())
+                    std::string bzid = bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(),
+                                callsign = bz_getPlayerByIndex(playerList->get(i))->callsign.c_str();
+                
+                    if (bzid.empty())
                         continue;
 
-                    addCurrentPlayingTime(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(), bz_getPlayerByIndex(playerList->get(i))->callsign.c_str());
-                    updatePlayerRatio(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str());
-                    trackNewPlayingTime(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str());
+                    addCurrentPlayingTime(bzid, callsign);
+                    updatePlayerRatio(bzid);
+                    trackNewPlayingTime(bzid);
                 }
 
                 bz_deleteIntList(playerList);
@@ -560,6 +534,35 @@ void mofocup::doQuery(std::string query)
     {
         bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
         bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
+    }
+}
+
+void mofocup::incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement)
+{
+    sqlite3_stmt *newStats;
+    std::string query = ""
+    "INSERT OR REPLACE INTO `" + cup + "Cup` (BZID, CupID, Points, Rating) "
+    "VALUES (?, "
+    "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), "
+    "(SELECT COALESCE((SELECT `Points` + ? FROM `" + cup + "Cup`, `Cups` WHERE `" + cup + "Cup`.`BZID` = ? AND `" + cup + "Cup`.`CupID` = `Cups`.`CupID` AND `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), ?)), "
+    "(SELECT `Rating` FROM `" + cup + "Cup` WHERE `BZID` = ?))";
+
+    if (sqlite3_prepare_v2(db, query.c_str(), -1, &newStats, 0) == SQLITE_OK)
+    {
+        sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(newStats, 2, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(newStats, 3, pointsToIncrement.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(newStats, 4, bzid.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(newStats, 5, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(newStats, 6, pointsToIncrement.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(newStats, 7, bzid.c_str(), -1, SQLITE_TRANSIENT);
+
+        int result = sqlite3_step(newStats);
+        sqlite3_finalize(newStats);
+    }
+    else //could not prepare the statement
+    {
+        bz_debugMessagef(2, "Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
     }
 }
 
