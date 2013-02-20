@@ -77,6 +77,7 @@ public:
     virtual std::string convertToString(int myInt);
     virtual void doQuery(std::string query);
     virtual void incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement);
+    virtual int playersKilledByGenocide(bz_eTeamType killerTeam);
     virtual void trackNewPlayingTime(std::string bzid);
     virtual void updatePlayerRatio(std::string bzid);
 
@@ -197,7 +198,6 @@ void mofocup::Event(bz_EventData* eventData)
 
             if (bzid.empty()) //ignore the cap if it's an unregistered player
                 return;
-                
             
             //update playing time of the capper to accurately calculate the total points
             addCurrentPlayingTime(bzid, callsign);
@@ -215,17 +215,52 @@ void mofocup::Event(bz_EventData* eventData)
         case bz_ePlayerDieEvent:
         {
             bz_PlayerDieEventData_V1* diedata = (bz_PlayerDieEventData_V1*)eventData;
+            std::string bzid = bz_getPlayerByIndex(diedata->killerID)->bzID.c_str(),
+                        callsign = bz_getPlayerByIndex(diedata->killerID)->callsign.c_str();
 
-            if (std::string(bz_getPlayerByIndex(diedata->killerID)->bzID.c_str()).empty())
+            if (bzid.empty())
                 return;
                 
+            /*
+                MoFo Cup :: Bounty Cup
+                ----------------------
+                
+                We will be keeping track of the bounty points a player has
+                earned after killing a player with a bounty
+                
+            */
+            
+            /*
+                MoFo Cup :: Geno Cup
+                ----------------------
+                
+                Keep track of all the points a player has earned by killing
+                a team using genocide
+                
+            */
+            
+            if (((diedata->flagKilledWith == "R*" && diedata->team == eRedTeam) ||
+                diedata->flagKilledWith == "G*" && diedata->team == eGreenTeam ||
+                diedata->flagKilledWith == "B*" && diedata->team == eBlueTeam ||
+                diedata->flagKilledWith == "P*" && diedata->team == ePurpleTeam) &&
+                diedata->team != diedata->killerTeam &&
+                diedata->playerID != diedata->killerID)
+            {
+                incrementPoints(bzid, "Kills", convertToString(playersKilledByGenocide(diedata->killerTeam)));
+            }
+            
             /*
                 MoFo Cup :: Kills Cup
                 ---------------------
                 
                 Keep track of all the kills a player makes
+                
             */
+
+            incrementPoints(bzid, "Kills", convertToString(1));
             
+            //Update the ratios for all the players in all the cups
+            updatePlayerRatio(bzid);
         }
         break;
 
@@ -564,6 +599,25 @@ void mofocup::incrementPoints(std::string bzid, std::string cup, std::string poi
     {
         bz_debugMessagef(2, "Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
     }
+}
+
+int mofocup::playersKilledByGenocide(bz_eTeamType killerTeam)
+{
+    int playerCount = 0;
+    bz_APIIntList *playerList = bz_newIntList();
+    bz_getPlayerIndexList(playerList);
+
+    for (unsigned int i = 0; i < playerList->size(); i++)
+    {
+        if (bz_getPlayerByIndex(playerList->get(i))->team != killerTeam &&
+            bz_getPlayerByIndex(playerList->get(i))->team != eObservers &&
+            bz_getPlayerByIndex(playerList->get(i))->spawned)
+            playerCount++;
+    }
+
+    bz_deleteIntList(playerList);
+    
+    return playerCount;
 }
 
 void mofocup::trackNewPlayingTime(std::string bzid)
