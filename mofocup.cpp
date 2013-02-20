@@ -472,21 +472,29 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 
         if (strcmp(params->get(0).c_str(), "") != 0)
         {
-            if (sqlite3_prepare_v2(db, "SELECT `Rating`, (SELECT COUNT(*) FROM `CTFCup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `CTFCup` AS c1 WHERE `Callsign` = ?", -1, &statement, 0) == SQLITE_OK)
+            for (int i = 0; i < sizeof(cups); i++) //go through each cup
             {
-                sqlite3_bind_text(statement, 1, params->get(0).c_str(), -1, SQLITE_TRANSIENT);
-                int result = sqlite3_step(statement);
-
-                if (result == SQLITE_ROW)
+                std::string query = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cups[i] + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `CTFCup` AS c1 WHERE `Callsign` = ?";
+                
+                if (sqlite3_prepare_v2(db, query.c_str(), -1, &statement, 0) == SQLITE_OK)
                 {
-                    std::string playerPoints = (char*)sqlite3_column_text(statement, 0);
-                    std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
-                    bz_sendTextMessagef(BZ_SERVER, playerID, "%s is currently #%s in the CTF Cup with a CTF score of %s", params->get(0).c_str(), playerRatio.c_str(), playerPoints.c_str());
-                }
-                else
-                    bz_sendTextMessagef(BZ_SERVER, playerID, "%s is not part of the current MoFo Cup.", params->get(0).c_str());
+                    sqlite3_bind_text(statement, 1, params->get(0).c_str(), -1, SQLITE_TRANSIENT);
+                    int result = sqlite3_step(statement);
 
-                sqlite3_finalize(statement);
+                    if (result == SQLITE_ROW)
+                    {
+                        std::string playerPoints = (char*)sqlite3_column_text(statement, 0);
+                        std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
+                        bz_sendTextMessagef(BZ_SERVER, playerID, "%s is currently #%s in the %s Cup with a score of %s", params->get(0).c_str(), cups[i].c_str(), playerRatio.c_str(), playerPoints.c_str());
+                    }
+                    else
+                    {
+                        bz_sendTextMessagef(BZ_SERVER, playerID, "%s is not part of the current MoFo Cup.", params->get(0).c_str());
+                        break;
+                    }
+
+                    sqlite3_finalize(statement);
+                }
             }
         }
         else
