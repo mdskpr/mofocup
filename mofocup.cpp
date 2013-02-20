@@ -205,7 +205,7 @@ void mofocup::Event(bz_EventData* eventData)
 
             int bonusPoints = 8 * (bz_getTeamCount(ctfdata->teamCapped) - bz_getTeamCount(ctfdata->teamCapping)) + 3 * bz_getTeamCount(ctfdata->teamCapped); //calculate the amount of bonus points
             
-            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has captured the flag earning %i points towards the MoFo Cup", callsign.c_str(), bzid.c_str(), bonusPoints);
+            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has captured the flag earning %i points towards the CTF Cup", callsign.c_str(), bzid.c_str(), bonusPoints);
 
             incrementPoints(bzid, "CTF", convertToString(bonusPoints));
             updatePlayerRatio(bzid);
@@ -218,7 +218,7 @@ void mofocup::Event(bz_EventData* eventData)
             std::string bzid = bz_getPlayerByIndex(diedata->killerID)->bzID.c_str(),
                         callsign = bz_getPlayerByIndex(diedata->killerID)->callsign.c_str();
 
-            if (bzid.empty())
+            if (bzid.empty()) //No need to continue if the player isn't registered
                 return;
                 
             /*
@@ -247,6 +247,7 @@ void mofocup::Event(bz_EventData* eventData)
                 diedata->playerID != diedata->killerID)
             {
                 incrementPoints(bzid, "Kills", convertToString(playersKilledByGenocide(diedata->killerTeam)));
+                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has got a geno hit earning %i points towards the Geno Cup", callsign.c_str(), bzid.c_str(), playersKilledByGenocide(diedata->killerTeam));
             }
             
             /*
@@ -257,7 +258,7 @@ void mofocup::Event(bz_EventData* eventData)
                 
             */
 
-            incrementPoints(bzid, "Kills", convertToString(1));
+            incrementPoints(bzid, "Kills", "1");
             
             //Update the ratios for all the players in all the cups
             updatePlayerRatio(bzid);
@@ -344,19 +345,19 @@ void mofocup::Event(bz_EventData* eventData)
 
         case bz_eTickEvent:
         {
-            if (lastDatabaseUpdate + 300 < bz_getCurrentTime())
+            if (lastDatabaseUpdate + 300 < bz_getCurrentTime()) //Update player ratios every 5 minutes
             {
-                lastDatabaseUpdate = bz_getCurrentTime();
+                lastDatabaseUpdate = bz_getCurrentTime(); //Get the current time
 
                 bz_APIIntList *playerList = bz_newIntList();
                 bz_getPlayerIndexList(playerList);
 
-                for (unsigned int i = 0; i < playerList->size(); i++)
+                for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
                 {
                     std::string bzid = bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(),
                                 callsign = bz_getPlayerByIndex(playerList->get(i))->callsign.c_str();
                 
-                    if (bzid.empty())
+                    if (bzid.empty()) //Go to the next player if this player isn't registered
                         continue;
 
                     addCurrentPlayingTime(bzid, callsign);
@@ -508,16 +509,22 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 
 void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
 {
-    if (playingTime.size() > 0)
+    /*
+        This function will add a player's current playing time
+        to the `PlayingTime` table
+    */
+
+    if (playingTime.size() > 0) //As long as we have some playing stored
     {
-        for (unsigned int i = 0; i < playingTime.size(); i++)
+        for (unsigned int i = 0; i < playingTime.size(); i++) //Go through all the stored playing times
         {
-            if (playingTime.at(i).bzid == bzid)
+            if (playingTime.at(i).bzid == bzid) //We found the playing time stored for the specified BZID
             {
-                int timePlayed = bz_getCurrentTime() - playingTime.at(i).joinTime;
+                int timePlayed = bz_getCurrentTime() - playingTime.at(i).joinTime; //get the player's playing time
 
                 bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has played for %i seconds. Updating the database...", callsign.c_str(), bzid.c_str(), timePlayed);
                 
+                //the query
                 std::string updatePlayingTimeQuery = ""
                 "INSERT OR REPLACE INTO `PlayingTime` (BZID, Callsign, CupID, PlayingTime) "
                 "VALUES (?, "
@@ -529,6 +536,7 @@ void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
 
                 if (sqlite3_prepare_v2(db, updatePlayingTimeQuery.c_str(), -1, &newPlayingTime, 0) == SQLITE_OK)
                 {
+                    //build the query
                     sqlite3_bind_text(newPlayingTime, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
                     sqlite3_bind_text(newPlayingTime, 2, callsign.c_str(), -1, SQLITE_TRANSIENT);
                     sqlite3_bind_text(newPlayingTime, 3, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
@@ -536,12 +544,12 @@ void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
                     sqlite3_bind_text(newPlayingTime, 5, bzid.c_str(), -1, SQLITE_TRANSIENT);
                     sqlite3_bind_text(newPlayingTime, 6, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
 
-                    int cols = sqlite3_column_count(newPlayingTime), result = 0;
-                    result = sqlite3_step(newPlayingTime);
+                    //prepare to execute and execute the query
+                    int result = sqlite3_step(newPlayingTime);
                     sqlite3_finalize(newPlayingTime);
                 }
 
-                playingTime.erase(playingTime.begin() + i, playingTime.begin() + i + 1);
+                playingTime.erase(playingTime.begin() + i, playingTime.begin() + i + 1); //remove this stored time from the structure
             }
         }
     }
@@ -549,6 +557,10 @@ void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
 
 std::string mofocup::convertToString(int myInt)
 {
+    /*
+        Convert an integer into a string
+    */
+    
     std::string myString;
     std::stringstream string;
     string << myInt; //Use an stringstream to pass an int through a string
@@ -559,13 +571,17 @@ std::string mofocup::convertToString(int myInt)
 
 void mofocup::doQuery(std::string query)
 {
+    /*
+        Execute a SQL query without the need of any return values
+    */
+
     bz_debugMessage(2, "DEBUG :: MoFo Cup :: Executing following SQL query...");
     bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", query.c_str());
 
-    char* db_err = 0;
-    int ret = sqlite3_exec(db, query.c_str(), NULL, 0, &db_err);
+    char* db_err = 0; //a place to store the error
+    int ret = sqlite3_exec(db, query.c_str(), NULL, 0, &db_err); //execute
 
-    if (db_err != 0)
+    if (db_err != 0) //print out any errors
     {
         bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
         bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
@@ -574,6 +590,12 @@ void mofocup::doQuery(std::string query)
 
 void mofocup::incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement)
 {
+    /*
+        Increment a player's points in the respective table by the
+        specified value
+    */
+
+    //the query
     sqlite3_stmt *newStats;
     std::string query = ""
     "INSERT OR REPLACE INTO `" + cup + "Cup` (BZID, CupID, Points, Rating) "
@@ -584,6 +606,7 @@ void mofocup::incrementPoints(std::string bzid, std::string cup, std::string poi
 
     if (sqlite3_prepare_v2(db, query.c_str(), -1, &newStats, 0) == SQLITE_OK)
     {
+        //build the query
         sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(newStats, 2, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(newStats, 3, pointsToIncrement.c_str(), -1, SQLITE_TRANSIENT);
@@ -592,6 +615,7 @@ void mofocup::incrementPoints(std::string bzid, std::string cup, std::string poi
         sqlite3_bind_text(newStats, 6, pointsToIncrement.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(newStats, 7, bzid.c_str(), -1, SQLITE_TRANSIENT);
 
+        //execute
         int result = sqlite3_step(newStats);
         sqlite3_finalize(newStats);
     }
@@ -603,12 +627,19 @@ void mofocup::incrementPoints(std::string bzid, std::string cup, std::string poi
 
 int mofocup::playersKilledByGenocide(bz_eTeamType killerTeam)
 {
-    int playerCount = 0;
+    /*
+        Get the amount of players that have been ideally killed
+        by a genocide hit because not all players on a team will
+        be spawned at the time of the hit
+    */
+
+    int playerCount = 0; //the value we'll return
     bz_APIIntList *playerList = bz_newIntList();
     bz_getPlayerIndexList(playerList);
 
-    for (unsigned int i = 0; i < playerList->size(); i++)
+    for (unsigned int i = 0; i < playerList->size(); i++) //go through all the players
     {
+        //check a player is part of the team affected, not an observer, and is spawned
         if (bz_getPlayerByIndex(playerList->get(i))->team != killerTeam &&
             bz_getPlayerByIndex(playerList->get(i))->team != eObservers &&
             bz_getPlayerByIndex(playerList->get(i))->spawned)
@@ -622,6 +653,11 @@ int mofocup::playersKilledByGenocide(bz_eTeamType killerTeam)
 
 void mofocup::trackNewPlayingTime(std::string bzid)
 {
+    /*
+        Create a new slot in the structure in order to keep track
+        of a player's playing time
+    */
+
     playingTimeStructure newPlayingTime;
 
     newPlayingTime.bzid = bzid;
@@ -632,8 +668,14 @@ void mofocup::trackNewPlayingTime(std::string bzid)
 
 void mofocup::updatePlayerRatio(std::string bzid)
 {
-    for (int i = 0; i < sizeof(cups); i++)
+    /*
+        Go through all the cups, and update each player's ratio in the table
+        for the appropriate cup
+    */
+
+    for (int i = 0; i < sizeof(cups); i++) //go through each cup
     {
+        //initialize variables, and build a query for the respective table/cup to get the values to calculate a new ratio
         float newRankDecimal;
         int result, points, playingTime, oldRank, newRank;
         std::string currentStatsQuery = "SELECT `" + cups[i] + "Cup`.`Points`, `PlayingTime`.`PlayingTime`, `" + cups[i] + "Cup`.`Rating` FROM `" + cups[i] + "Cup`, `PlayingTime` WHERE `PlayingTime`.`BZID` = `" + cups[i] + "`.`BZID` AND `" + cups[i] + "Cup`.`BZID` = ?";
@@ -641,8 +683,10 @@ void mofocup::updatePlayerRatio(std::string bzid)
 
         if (sqlite3_prepare_v2(db, currentStatsQuery.c_str(), -1, &currentStats, 0) == SQLITE_OK)
         {
-            sqlite3_bind_text(currentStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-            int cols = sqlite3_column_count(currentStats), result = sqlite3_step(currentStats);
+            sqlite3_bind_text(currentStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT); //build the query
+            int result = sqlite3_step(currentStats);
+            
+            //store the values needed
             points = atoi((char*)sqlite3_column_text(currentStats, 0));
             playingTime = atoi((char*)sqlite3_column_text(currentStats, 1));
             oldRank = atoi((char*)sqlite3_column_text(currentStats, 2));
@@ -650,9 +694,11 @@ void mofocup::updatePlayerRatio(std::string bzid)
             sqlite3_finalize(currentStats);
         }
 
+        //calculate the new ratio
         newRankDecimal = (float)points/(float)((float)playingTime/86400.0);
         newRank = int(newRankDecimal);
         
+        //build the query to update the ratios in each respective table
         std::string query = ""
         "INSERT OR REPLACE INTO `" + cups[i] + "Cup` (BZID, CupID, Points, Rating) "
         "VALUES (?, "
@@ -664,14 +710,15 @@ void mofocup::updatePlayerRatio(std::string bzid)
 
         if (sqlite3_prepare_v2(db, query.c_str(), -1, &newStats, 0) == SQLITE_OK)
         {
+            //prepare the query
             sqlite3_bind_text(newStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(newStats, 2, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(newStats, 3, bzid.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(newStats, 4, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(newStats, 5, convertToString(newRank).c_str(), -1, SQLITE_TRANSIENT);
 
-            int cols = sqlite3_column_count(newStats), result = 0;
-            result = sqlite3_step(newStats);
+            //execute
+            int result = sqlite3_step(newStats);
             sqlite3_finalize(newStats);
         }
     }
