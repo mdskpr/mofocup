@@ -57,7 +57,7 @@ public:
     sqlite3* db; //sqlite database we'll be using
     std::string dbfilename; //the path to the database
 
-    virtual const char* Name (){return "MoFo Cup";}
+    virtual const char* Name (){return "MoFo Cup (A1)";}
     virtual void Init(const char* /*commandLine*/);
     virtual void Cleanup(void);
 
@@ -263,8 +263,12 @@ void mofocup::Event(bz_EventData* eventData)
                 }
             }
 
-            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) earned %i total bounty points.", callsign.c_str(), bzid.c_str(), killerRampageScore + killerBonusScore);
-            incrementPoints(bzid, "Bounty", convertToString(killerRampageScore + killerBonusScore));
+            if (killerRampageScore + killerBonusScore > 0)
+            {
+                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) earned %i total bounty points.", callsign.c_str(), bzid.c_str(), killerRampageScore + killerBonusScore);
+                incrementPoints(bzid, "Bounty", convertToString(killerRampageScore + killerBonusScore));
+            }
+
             numberOfKills[diedata->playerID] = 0; //reset the bounty on the player who died to 0
 
             /*
@@ -284,7 +288,7 @@ void mofocup::Event(bz_EventData* eventData)
                 diedata->playerID != diedata->killerID) //check that it's not a selfkill
             {
                 incrementPoints(bzid, "Kills", convertToString(playersKilledByGenocide(diedata->killerTeam) - 1)); //we're increment the kills by 1 below
-                incrementPoints(bzid, "Geno", convertToString(playersKilledByGenocide(diedata->killerTeam)));
+                incrementPoints(bzid, "Geno", convertToString(playersKilledByGenocide(diedata->killerTeam) + 1));
                 bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has got a geno hit earning %i points towards the Geno Cup", callsign.c_str(), bzid.c_str(), playersKilledByGenocide(diedata->killerTeam));
             }
 
@@ -330,6 +334,7 @@ void mofocup::Event(bz_EventData* eventData)
                 doQuery("INSERT OR IGNORE INTO `" + cups[i] + "Cup` VALUES (" + bzid + ", (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 0, 0)");
             }
 
+            doQuery("INSERT OR IGNORE INTO `Players` VALUES (" + bzid + ", '" + callsign + "', (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 0)");
             bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has started to play, now recording playing time.", callsign.c_str(), bzid.c_str());
             trackNewPlayingTime(bzid);
         }
@@ -437,7 +442,7 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             else if (strcmp(params->get(0).c_str(), "geno") == 0) cup = "Geno";
             else if (strcmp(params->get(0).c_str(), "kills") == 0) cup = "Kills";
 
-            std::string top5query = "SELECT `Players`.`Callsign`, `" + cup + "Cup`.`Rating` FROM `" + cup + "Cup`, `PlayingTime` WHERE `Players`.`BZID` = `" + cup + "Cup`.`BZID` AND `" + cup + "Cup`.`CupID` = (SELECT `Cups`.`CupID` FROM `Cups` WHERE `Cups`.`ServerID` = ? AND strftime('%s','now') < `Cups`.`EndTime` AND strftime('%s','now') > `Cups`.`StartTime`) ORDER BY `" + cup + "Cup`.`Rating` DESC, `Players`.`PlayingTime` ASC LIMIT 5";
+            std::string top5query = "SELECT `Players`.`Callsign`, `" + cup + "Cup`.`Rating` FROM `" + cup + "Cup`, `Players` WHERE `Players`.`BZID` = `" + cup + "Cup`.`BZID` AND `" + cup + "Cup`.`CupID` = (SELECT `Cups`.`CupID` FROM `Cups` WHERE `Cups`.`ServerID` = ? AND strftime('%s','now') < `Cups`.`EndTime` AND strftime('%s','now') > `Cups`.`StartTime`) ORDER BY `" + cup + "Cup`.`Rating` DESC, `Players`.`PlayingTime` ASC LIMIT 5";
             std::string myPlaceQuery = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cup + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cup + "Cup` AS c1 WHERE `BZID` = ?";
             sqlite3_stmt *statement;
 
@@ -576,6 +581,7 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
                         bz_sendTextMessage(BZ_SERVER, playerID, "You are not part of the MoFo Cup yet. Get in there and cap or kill someone!");
                         break;
                     }
+
                     sqlite3_finalize(statement);
                 }
             }
@@ -589,7 +595,7 @@ void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
 {
     /*
         This function will add a player's current playing time
-        to the `PlayingTime` table
+        to the `Players` table
     */
 
     if (playingTime.size() > 0) //As long as we have some playing stored
@@ -608,7 +614,7 @@ void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
                 "VALUES (?, "
                 "?, "
                 "(SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`), "
-                "(SELECT COALESCE((SELECT `PlayingTime` + ? FROM `Players`, `Cups` WHERE `Players`.`BZID` = ? AND `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`), '1')";
+                "(SELECT COALESCE((SELECT `PlayingTime` + ? FROM `Players`, `Cups` WHERE `Players`.`BZID` = ? AND `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`), ?)))";
 
                 sqlite3_stmt *newPlayingTime;
 
@@ -621,10 +627,15 @@ void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
                     sqlite3_bind_text(newPlayingTime, 4, convertToString(timePlayed).c_str(), -1, SQLITE_TRANSIENT);
                     sqlite3_bind_text(newPlayingTime, 5, bzid.c_str(), -1, SQLITE_TRANSIENT);
                     sqlite3_bind_text(newPlayingTime, 6, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_text(newPlayingTime, 7, convertToString(timePlayed).c_str(), -1, SQLITE_TRANSIENT);
 
                     //prepare to execute and execute the query
                     int result = sqlite3_step(newPlayingTime);
                     sqlite3_finalize(newPlayingTime);
+                }
+                else
+                {
+                    bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: addCurrentPlayingTime() :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
                 }
 
                 playingTime.erase(playingTime.begin() + i, playingTime.begin() + i + 1); //remove this stored time from the structure
@@ -766,7 +777,7 @@ void mofocup::updatePlayerRatio(std::string bzid)
         //initialize variables, and build a query for the respective table/cup to get the values to calculate a new ratio
         float newRankDecimal;
         int result, points, playingTime, oldRank, newRank;
-        std::string currentStatsQuery = "SELECT `" + cups[i] + "Cup`.`Points`, `Players`.`PlayingTime`, `" + cups[i] + "Cup`.`Rating` FROM `" + cups[i] + "Cup`, `PlayingTime` WHERE `Players`.`BZID` = `" + cups[i] + "`.`BZID` AND `" + cups[i] + "Cup`.`BZID` = ?";
+        std::string currentStatsQuery = "SELECT `" + cups[i] + "Cup`.`Points`, `Players`.`PlayingTime`, `" + cups[i] + "Cup`.`Rating` FROM `" + cups[i] + "Cup`, `Players` WHERE `Players`.`BZID` = `" + cups[i] + "Cup`.`BZID` AND `" + cups[i] + "Cup`.`BZID` = ?";
         sqlite3_stmt *currentStats;
 
         if (sqlite3_prepare_v2(db, currentStatsQuery.c_str(), -1, &currentStats, 0) == SQLITE_OK)
@@ -780,6 +791,10 @@ void mofocup::updatePlayerRatio(std::string bzid)
             oldRank = atoi((char*)sqlite3_column_text(currentStats, 2));
 
             sqlite3_finalize(currentStats);
+        }
+        else
+        {
+            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: updatePlayerRatio() [1] :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
         }
 
         //calculate the new ratio
@@ -808,6 +823,10 @@ void mofocup::updatePlayerRatio(std::string bzid)
             //execute
             int result = sqlite3_step(newStats);
             sqlite3_finalize(newStats);
+        }
+        else
+        {
+            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: updatePlayerRatio() [2] :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
         }
     }
 }
