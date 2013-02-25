@@ -560,10 +560,18 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
                 {
                     sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
                     int result = sqlite3_step(statement);
-                    std::string playerPoints = (char*)sqlite3_column_text(statement, 0);
-                    std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
-                    bz_sendTextMessagef(BZ_SERVER, playerID, "You are currently #%s in CTF Cup with a CTF score of %s", playerRatio.c_str(), playerPoints.c_str());
-
+                    
+                    if (result == SQLITE_ROW)
+                    {
+                        std::string playerPoints = (char*)sqlite3_column_text(statement, 0);
+                        std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
+                        bz_sendTextMessagef(BZ_SERVER, playerID, "You are currently #%s in CTF Cup with a CTF score of %s", playerRatio.c_str(), playerPoints.c_str());
+                    }
+                    else
+                    {
+                        bz_sendTextMessage(BZ_SERVER, playerID, "You are not part of the MoFo Cup yet. Get in there and cap or kill someone!");
+                        break;
+                    }
                     sqlite3_finalize(statement);
                 }
             }
