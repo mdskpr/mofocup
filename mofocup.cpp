@@ -135,7 +135,7 @@ void mofocup::Init(const char* commandLine)
             !Register(bz_ePlayerPartEvent) ||
             !Register(bz_ePlayerJoinEvent) ||
             !Register(bz_ePlayerPausedEvent) ||
-            !Register(bz_eTickEvent)
+            !Register(bz_eTickEvent) ||
             !Register(bz_eFlagDroppedEvent))
         {
             bz_debugMessage(0, "DEBUG :: MoFo Cup :: A BZFS event failed to load.");
@@ -220,7 +220,7 @@ void mofocup::Event(bz_EventData* eventData)
                 flagID = flagdropdata->flagID; //store the which team flag was dropped
                 timeDropped = bz_getCurrentTime(); //store the time
 
-                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Team flag was dropped by %s (%s) at %d", bz_getPlayerByIndex(lastPlayerDied)->callsign.c_str(), bz_getPlayerByIndex(lastPlayerDied)->bzid.c_str(), timeDropped);
+                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Team flag was dropped by %s (%s) at %d", bz_getPlayerByIndex(lastPlayerDied)->callsign.c_str(), bz_getPlayerByIndex(lastPlayerDied)->bzID.c_str(), timeDropped);
             }
         }
         break;
@@ -421,11 +421,23 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 {
     if(command == "cup")
     {
-        if (strcmp(params->get(0).c_str(), "ctf") == 0)
+        if (strcmp(params->get(0).c_str(), "bounty") == 0 ||
+            strcmp(params->get(0).c_str(), "ctf") == 0 ||
+            strcmp(params->get(0).c_str(), "geno") == 0 ||
+            strcmp(params->get(0).c_str(), "kills") == 0)
         {
+            std::string cup;
+
+            if (strcmp(params->get(0).c_str(), "bounty") == 0) cup = "Bounty";
+            else if (strcmp(params->get(0).c_str(), "ctf") == 0) cup = "CTF";
+            else if (strcmp(params->get(0).c_str(), "geno") == 0) cup = "Geno";
+            else if (strcmp(params->get(0).c_str(), "kills") == 0) cup = "Kills";
+
+            std::string top5query = "SELECT `PlayingTime`.`Callsign`, `" + cup + "Cup`.`Rating` FROM `" + cup + "Cup`, `PlayingTime` WHERE `PlayingTime`.`BZID` = `" + cup + "Cup`.`BZID` AND `" + cup + "Cup`.`CupID` = (SELECT `Cups`.`CupID` FROM `Cups` WHERE `Cups`.`ServerID` = ? AND strftime('%s','now') < `Cups`.`EndTime` AND strftime('%s','now') > `Cups`.`StartTime`) ORDER BY `" + cup + "Cup`.`Rating` DESC, `PlayingTime`.`PlayingTime` ASC LIMIT 5";
+            std::string myPlaceQuery = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cup + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cup + "Cup` AS c1 WHERE `BZID` = ?";
             sqlite3_stmt *statement;
 
-            if (sqlite3_prepare_v2(db, "SELECT `PlayingTime`.`Callsign`, `CTFCup`.`Rating` FROM `CTFCup`, `PlayingTime` WHERE `PlayingTime`.`BZID` = `CTFCup`.`BZID` AND `CTFCup`.`CupID` = (SELECT `Cups`.`CupID` FROM `Cups` WHERE `Cups`.`ServerID` = ? AND `Cups`.`CupType` = 'capture' AND strftime('%s','now') < `Cups`.`EndTime` AND strftime('%s','now') > `Cups`.`StartTime`) ORDER BY `CTFCup`.`Rating` DESC, `PlayingTime`.`PlayingTime` ASC LIMIT 5", -1, &statement, 0) == SQLITE_OK)
+            if (sqlite3_prepare_v2(db, top5query.c_str(), -1, &statement, 0) == SQLITE_OK)
             {
                 sqlite3_bind_text(statement, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
                 int cols = sqlite3_column_count(statement), result = 0, counter = 1;
@@ -465,7 +477,7 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 
             bz_sendTextMessage(BZ_SERVER, playerID, " ");
 
-            if (sqlite3_prepare_v2(db, "SELECT `Rating`, (SELECT COUNT(*) FROM `CTFCup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `CTFCup` AS c1 WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
+            if (sqlite3_prepare_v2(db, myPlaceQuery.c_str(), -1, &statement, 0) == SQLITE_OK)
             {
                 sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
                 int cols = sqlite3_column_count(statement), result = 0;
@@ -541,15 +553,19 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
         }
         else
         {
-            if (sqlite3_prepare_v2(db, "SELECT `Rating`, (SELECT COUNT(*) FROM `CTFCup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `CTFCup` AS c1 WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
+            for (int i = 0; i < sizeof(cups); i++) //go through each cup
             {
-                sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
-                int result = sqlite3_step(statement);
-                std::string playerPoints = (char*)sqlite3_column_text(statement, 0);
-                std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
-                bz_sendTextMessagef(BZ_SERVER, playerID, "You are currently #%s in CTF Cup with a CTF score of %s", playerRatio.c_str(), playerPoints.c_str());
+                std::string query = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cups[i] + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cups[i] + "Cup` AS c1 WHERE `BZID` = ?";
+                if (sqlite3_prepare_v2(db, query.c_str(), -1, &statement, 0) == SQLITE_OK)
+                {
+                    sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
+                    int result = sqlite3_step(statement);
+                    std::string playerPoints = (char*)sqlite3_column_text(statement, 0);
+                    std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
+                    bz_sendTextMessagef(BZ_SERVER, playerID, "You are currently #%s in CTF Cup with a CTF score of %s", playerRatio.c_str(), playerPoints.c_str());
 
-                sqlite3_finalize(statement);
+                    sqlite3_finalize(statement);
+                }
             }
         }
 
