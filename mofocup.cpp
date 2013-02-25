@@ -39,16 +39,7 @@ License:
 BSD
 
 Version:
-0.7
-*/
-
-/*
-Formulas
-
-[23:00:37] <I_Died_Once> (Total of Cap Points) / (Total Seconds Played / 86400) = CTF Cup
-[23:00:37] <I_Died_Once> (Sum of all bounties) / (Total Seconds Played / 86400) = Bounty Cup
-[23:00:37] <I_Died_Once> (Sum of all geno points) / (Total Seconds Played / 86400) = Geno Cup
-[23:00:37] <I_Died_Once> (Number of Kills) / (Total Seconds Played / 86400) = Kills Cup
+0.9.8
 */
 
 #include <iostream>
@@ -96,6 +87,12 @@ BZ_PLUGIN(mofocup);
 
 //Initialize all the available cups
 std::string cups[] = {"Bounty", "CTF", "Geno", "Kills"};
+//Keep track of bounties
+int numberOfKills[256] = {0}; //the bounty a player has on their turret
+int rampage[8] = {0, 6, 12, 18, 24, 30, 36, 999}; //rampages
+int lastPlayerDied = -1; //the last person who was killed
+int flagID = -1; //if the flag id is either 0 or 1, it's a team flag
+double timeDropped = 0; //the time a team flag was dropped
 
 void mofocup::Init(const char* commandLine)
 {
@@ -138,7 +135,8 @@ void mofocup::Init(const char* commandLine)
             !Register(bz_ePlayerPartEvent) ||
             !Register(bz_ePlayerJoinEvent) ||
             !Register(bz_ePlayerPausedEvent) ||
-            !Register(bz_eTickEvent))
+            !Register(bz_eTickEvent)
+            !Register(bz_eFlagDroppedEvent))
         {
             bz_debugMessage(0, "DEBUG :: MoFo Cup :: A BZFS event failed to load.");
             bz_debugMessage(0, "DEBUG :: MoFo Cup :: Unloading MoFoCup plugin...");
@@ -212,6 +210,21 @@ void mofocup::Event(bz_EventData* eventData)
         }
         break;
 
+        case bz_eFlagDroppedEvent:
+        {
+            bz_FlagDroppedEventData_V1* flagdropdata = (bz_FlagDroppedEventData_V1*)eventData;
+
+            if (flagdropdata->flagID == 0 || flagdropdata->flagID == 1) //check if a team flag was dropped
+            {
+                lastPlayerDied = flagdropdata->playerID; //store the player who dropped it
+                flagID = flagdropdata->flagID; //store the which team flag was dropped
+                timeDropped = bz_getCurrentTime(); //store the time
+
+                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Team flag was dropped by %s (%s) at %d", bz_getPlayerByIndex(lastPlayerDied)->callsign.c_str(), bz_getPlayerByIndex(lastPlayerDied)->bzid.c_str(), timeDropped);
+            }
+        }
+        break;
+
         case bz_ePlayerDieEvent:
         {
             bz_PlayerDieEventData_V1* diedata = (bz_PlayerDieEventData_V1*)eventData;
@@ -229,6 +242,31 @@ void mofocup::Event(bz_EventData* eventData)
                 earned after killing a player with a bounty
                 
             */
+
+            if (diedata->playerID != diedata->killerID) //if it's not a selfkill, increment their bounty
+                numberOfKills[diedata->killerID]++;
+
+            //store scoring info
+            int killerRampageScore = 0;
+            int killerBonusScore = 0;
+            int sizeOfRampageArray = sizeof(rampage)/sizeof(int);
+
+            if (diedata->playerID == lastPlayerDied && diedata->playerID != diedata->killerID && timeDropped + 3 > bz_getCurrentTime()) //check if a team flag carrier was killed
+                killerBonusScore = 2; //2 points for killing a team flag carrier
+            
+            if (numberOfKills[diedata->playerID] > 0) //if the player who died had a bounty
+            {
+                for (int i = 0; i < sizeOfRampageArray; i++) //go through all the rampage levels
+                {
+                    //figure out what number to multiply by for a bounty total
+                    if (numberOfKills[diedata->playerID] >= rampage[i] && numberOfKills[diedata->playerID] < rampage[i+1] && diedata->playerID != diedata->killerID)
+                        killerRampageScore = 2 * i;
+                }
+            }
+
+            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) earned %i total bounty points.", callsign.c_str(), bzid.c_str(), killerRampageScore + killerBonusScore);
+            incrementPoints(bzid, "Bounty", convertToString(killerRampageScore + killerBonusScore));
+            numberOfKills[diedata->playerID] = 0; //reset the bounty on the player who died to 0
             
             /*
                 MoFo Cup :: Geno Cup
@@ -239,14 +277,15 @@ void mofocup::Event(bz_EventData* eventData)
                 
             */
             
-            if (((diedata->flagKilledWith == "R*" && diedata->team == eRedTeam) ||
-                diedata->flagKilledWith == "G*" && diedata->team == eGreenTeam ||
-                diedata->flagKilledWith == "B*" && diedata->team == eBlueTeam ||
-                diedata->flagKilledWith == "P*" && diedata->team == ePurpleTeam) &&
-                diedata->team != diedata->killerTeam &&
-                diedata->playerID != diedata->killerID)
+            if (((diedata->flagKilledWith == "R*" && diedata->team != eRedTeam) ||
+                diedata->flagKilledWith == "G*" && diedata->team != eGreenTeam ||
+                diedata->flagKilledWith == "B*" && diedata->team != eBlueTeam ||
+                diedata->flagKilledWith == "P*" && diedata->team != ePurpleTeam) && //check if it's a geno hit
+                diedata->team != diedata->killerTeam && //check that it's not affecting the same team
+                diedata->playerID != diedata->killerID) //check that it's not a selfkill
             {
-                incrementPoints(bzid, "Kills", convertToString(playersKilledByGenocide(diedata->killerTeam)));
+                incrementPoints(bzid, "Kills", convertToString(playersKilledByGenocide(diedata->killerTeam) - 1)); //we're increment the kills by 1 below
+                incrementPoints(bzid, "Geno", convertToString(playersKilledByGenocide(diedata->killerTeam)));
                 bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has got a geno hit earning %i points towards the Geno Cup", callsign.c_str(), bzid.c_str(), playersKilledByGenocide(diedata->killerTeam));
             }
             
@@ -309,12 +348,15 @@ void mofocup::Event(bz_EventData* eventData)
             bz_PlayerJoinPartEventData_V1* partdata = (bz_PlayerJoinPartEventData_V1*)eventData;
             std::string bzid = partdata->record->bzID.c_str(),
                         callsign = partdata->record->callsign.c_str();
+            numberOfKills[partdata->playerID] = 0;
 
             if (bzid.empty() || partdata->record->team == eObservers) //don't do anything if the player is an observer or is not registered
                 return;
 
             addCurrentPlayingTime(bzid, callsign); //they left, let's add their playing time to the database
             updatePlayerRatio(bzid);
+
+            bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has left. Updated their playing time and ratio.", callsign.c_str(), bzid.c_str());
         }
         break;
 
