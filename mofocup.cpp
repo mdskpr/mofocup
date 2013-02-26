@@ -66,6 +66,7 @@ public:
 
     virtual void addCurrentPlayingTime(std::string bzid, std::string callsign);
     virtual std::string convertToString(int myInt);
+    virtual std::string convertToString(double myDouble);
     virtual void doQuery(std::string query);
     virtual void incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement);
     virtual int playersKilledByGenocide(bz_eTeamType killerTeam);
@@ -219,8 +220,6 @@ void mofocup::Event(bz_EventData* eventData)
                 lastPlayerDied = flagdropdata->playerID; //store the player who dropped it
                 flagID = flagdropdata->flagID; //store the which team flag was dropped
                 timeDropped = bz_getCurrentTime(); //store the time
-
-                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Team flag was dropped by %s (%s) at %d", bz_getPlayerByIndex(lastPlayerDied)->callsign.c_str(), bz_getPlayerByIndex(lastPlayerDied)->bzID.c_str(), timeDropped);
             }
         }
         break;
@@ -396,6 +395,9 @@ void mofocup::Event(bz_EventData* eventData)
 
         case bz_eTickEvent:
         {
+            if (bz_getTeamCount(eRedTeam) + bz_getTeamCount(eGreenTeam) + bz_getTeamCount(eBlueTeam) + bz_getTeamCount(ePurpleTeam) == 0)
+                return;
+
             if (lastDatabaseUpdate + 300 < bz_getCurrentTime()) //Update player ratios every 5 minutes
             {
                 lastDatabaseUpdate = bz_getCurrentTime(); //Get the current time
@@ -602,11 +604,11 @@ void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
     {
         for (unsigned int i = 0; i < playingTime.size(); i++) //Go through all the stored playing times
         {
-            if (playingTime.at(i).bzid == bzid) //We found the playing time stored for the specified BZID
+            if (strcmp(playingTime.at(i).bzid.c_str(), bzid.c_str()) == 0) //We found the playing time stored for the specified BZID
             {
-                int timePlayed = bz_getCurrentTime() - playingTime.at(i).joinTime; //get the player's playing time
+                double timePlayed = bz_getCurrentTime() - playingTime.at(i).joinTime; //get the player's playing time
 
-                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has played for %i seconds. Updating the database...", callsign.c_str(), bzid.c_str(), timePlayed);
+                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has played for %d seconds. Updating the database...", callsign.c_str(), bzid.c_str(), timePlayed);
 
                 //the query
                 std::string updatePlayingTimeQuery = ""
@@ -656,6 +658,16 @@ std::string mofocup::convertToString(int myInt)
     myString = string.str();
 
     return myString;
+}
+
+std::string mofocup::convertToString(double myDouble)
+{
+    std::ostringstream myString;
+
+    if (!(myString << myDouble))
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Error converting %d to a string", myDouble);
+
+    return myString.str();
 }
 
 void mofocup::doQuery(std::string query)
