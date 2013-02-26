@@ -227,6 +227,10 @@ void mofocup::Event(bz_EventData* eventData)
         case bz_ePlayerDieEvent:
         {
             bz_PlayerDieEventData_V1* diedata = (bz_PlayerDieEventData_V1*)eventData;
+
+            if (diedata->killerID == 253)
+                return;
+
             std::string bzid = bz_getPlayerByIndex(diedata->killerID)->bzID.c_str(),
                         callsign = bz_getPlayerByIndex(diedata->killerID)->callsign.c_str();
 
@@ -482,6 +486,10 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 
                 sqlite3_finalize(statement);
             }
+            else
+            {
+                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: /cup [1] :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
+            }
 
             if (std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).empty())
                 return true;
@@ -516,11 +524,15 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 
                 sqlite3_finalize(statement);
             }
+            else
+            {
+                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: /cup [2] :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
+            }
         }
         else
         {
             bz_sendTextMessage(BZ_SERVER, playerID, "Usage: /cup <bounty | ctf | geno | kills>");
-            bz_sendTextMessage(BZ_SERVER, playerID, "See '/help cup' for more information regarding the MoFup Cup.");
+            bz_sendTextMessage(BZ_SERVER, playerID, "See '/help cup' for more information regarding the MoFo Cup.");
         }
 
         return true;
