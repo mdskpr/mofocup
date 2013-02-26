@@ -790,6 +790,11 @@ void mofocup::updatePlayerRatio(std::string bzid)
             playingTime = atoi((char*)sqlite3_column_text(currentStats, 1));
             oldRank = atoi((char*)sqlite3_column_text(currentStats, 2));
 
+            bz_debugMessagef(4, "DEBUG :: MoFo Cup :: %s Stats for BZID %s", cups[i].c_str(), bzid.c_str());
+            bz_debugMessagef(4, "DEBUG :: MoFo Cup ::   Points        -> %i", points);
+            bz_debugMessagef(4, "DEBUG :: MoFo Cup ::   Playing Time  -> %i", playingTime);
+            bz_debugMessagef(4, "DEBUG :: MoFo Cup ::   Old Ratio     -> %i", oldRank);
+
             sqlite3_finalize(currentStats);
         }
         else
@@ -800,6 +805,8 @@ void mofocup::updatePlayerRatio(std::string bzid)
         //calculate the new ratio
         newRankDecimal = (float)points/(float)((float)playingTime/86400.0);
         newRank = int(newRankDecimal);
+
+        bz_debugMessagef(4, "DEBUG :: MoFo Cup :: New ratio for BZID %s -> %i ~= %f", bzid.c_str(), newRank, newRankDecimal);
 
         //build the query to update the ratios in each respective table
         std::string query = ""
@@ -822,6 +829,12 @@ void mofocup::updatePlayerRatio(std::string bzid)
 
             //execute
             int result = sqlite3_step(newStats);
+
+            if (result == SQLITE_DONE)
+                bz_debugMessagef(4, "DEBUG :: MoFo Cup :: %s ratio updated successfully for BZID %s", cups[i].c_str(), bzid.c_str());
+            else
+                bz_debugMessagef(4, "DEBUG :: MoFo Cup :: %s ratio updated failed for BZID %s", cups[i].c_str(), bzid.c_str());
+
             sqlite3_finalize(newStats);
         }
         else
