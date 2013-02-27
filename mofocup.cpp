@@ -494,27 +494,6 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
         {
             for (int i = 0; i < sizeof(cups)/sizeof(std::string); i++) //go through each cup
             {
-                /*std::string query = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cups[i] + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `CTFCup` AS c1 WHERE `Callsign` = ?";
-
-                if (sqlite3_prepare_v2(db, query.c_str(), -1, &statement, 0) == SQLITE_OK)
-                {
-                    sqlite3_bind_text(statement, 1, params->get(0).c_str(), -1, SQLITE_TRANSIENT);
-                    int result = sqlite3_step(statement);
-
-                    if (result == SQLITE_ROW)
-                    {
-                        std::string playerPoints = (char*)sqlite3_column_text(statement, 0);
-                        std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
-                        bz_sendTextMessagef(BZ_SERVER, playerID, "%s is currently #%s in the %s Cup with a score of %s", params->get(0).c_str(), cups[i].c_str(), playerRatio.c_str(), playerPoints.c_str());
-                    }
-                    else
-                    {
-                        bz_sendTextMessagef(BZ_SERVER, playerID, "%s is not part of the current MoFo Cup.", params->get(0).c_str());
-                        break;
-                    }
-
-                    sqlite3_finalize(statement);
-                }*/
                 std::vector<std::string> playerRank = getPlayerStanding(cups[i], params->get(0).c_str(), 1);
 
                 if (strcmp(playerRank[0].c_str(), "-1") == 0)
@@ -527,28 +506,6 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
         {
             for (int i = 0; i < sizeof(cups)/sizeof(std::string); i++) //go through each cup
             {
-                /*std::string query = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cups[i] + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cups[i] + "Cup` AS c1 WHERE `BZID` = ?";
-                if (sqlite3_prepare_v2(db, query.c_str(), -1, &statement, 0) == SQLITE_OK)
-                {
-                    sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
-                    int result = sqlite3_step(statement);
-
-                    if (result == SQLITE_ROW)
-                    {
-                        std::string playerPoints = (char*)sqlite3_column_text(statement, 0);
-                        std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
-                        bz_sendTextMessagef(BZ_SERVER, playerID, "You are currently #%s in %s Cup with a score of %s", playerRatio.c_str(), cups[i].c_str(), playerPoints.c_str());
-                    }
-                    else
-                    {
-                        bz_sendTextMessage(BZ_SERVER, playerID, "You are not part of the MoFo Cup yet. Get in there and cap or kill someone!");
-                        break;
-                    }
-
-                    sqlite3_finalize(statement);
-                }*/
-                
-                
                 std::vector<std::string> playerRank = getPlayerStanding(cups[i], bz_getPlayerByIndex(playerID)->bzID.c_str(), 0);
                 
                 if (strcmp(playerRank[0].c_str(), "-1") == 0)
@@ -713,7 +670,7 @@ std::vector<std::string> mofocup::getPlayerStanding(std::string cup, std::string
         if (result == SQLITE_ROW)
         {
             playerStats[1] = (char*)sqlite3_column_text(statement, 0);
-            playerStats[0] = (char*)sqlite3_column_text(statement, 1);
+            playerStats[0] = (char*)sqlite3_column_text(statement, 2);
         }
         else
         {
