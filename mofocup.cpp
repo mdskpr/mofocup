@@ -708,9 +708,10 @@ bool mofocup::isFirstTime(std::string bzid)
 {
     sqlite3_stmt *statement;
     
-    if (sqlite3_prepare_v2(db, "SELECT `PlayingTime` FROM `Players` WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
+    if (sqlite3_prepare_v2(db, "SELECT `PlayingTime` FROM `Players` WHERE `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)", -1, &statement, 0) == SQLITE_OK)
     {
         sqlite3_bind_text(statement, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
         int result = sqlite3_step(statement);
 
         if (result == SQLITE_ROW)
