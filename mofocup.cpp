@@ -73,6 +73,7 @@ public:
     virtual std::vector<std::string> getPlayerStanding(std::string cup, std::string callsignOrBZID, bool playerOverride);
     virtual bool isDigit(std::string someString);
     virtual bool isFirstTime(std::string bzid);
+    virtual bool isPlayerAvailable(std::string bzid);
     virtual void incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement);
     virtual int playersKilledByGenocide(bz_eTeamType killerTeam);
     virtual void trackNewPlayingTime(std::string bzid);
@@ -85,6 +86,8 @@ public:
         double joinTime;
     };
     std::vector<playingTimeStructure> playingTime;
+    
+    std::string top5Players[4][5][3]; //0 - Bounty | 1 - CTF | 2 - Geno | 3 - Kills
 
     double lastDatabaseUpdate;
 };
@@ -436,6 +439,24 @@ void mofocup::Event(bz_EventData* eventData)
 
                 bz_deleteIntList(playerList);
             }
+            
+            for (int i = 0; i < 4; i++)
+            {
+                for (int j = 0; j < 5; j++)
+                {
+                    std::vector<std::string> getPlayerInformation = getPlayerInCupStanding(cups[i], convertToString(j));
+                    
+                    if (strcmp(getPlayerInformation[2].c_str(), top5Players[i][j][2].c_str()) != 0)
+                    {
+                        if (isPlayerAvailable(getPlayerInformation[2]))
+                            bz_sendTextMessagef(BZ_SERVER, BZ_ALLUSERS, "Congrats to %s for being #%i in the %s Cup!!!", getPlayerInformation[0].c_str(), j + 1, cups[i].c_str());
+                    
+                        top5Players[i][j][0] = getPlayerInformation[0];
+                        top5Players[i][j][1] = getPlayerInformation[1];
+                        top5Players[i][j][2] = getPlayerInformation[2];
+                    }
+                }
+            }
         }
         break;
 
@@ -634,9 +655,9 @@ std::string mofocup::formatScore(std::string place, std::string callsign, std::s
 
 std::vector<std::string> mofocup::getPlayerInCupStanding(std::string cup, std::string place)
 {
-    std::vector<std::string> playerStats(2);
+    std::vector<std::string> playerStats(3);
 
-    std::string top5query = "SELECT `Players`.`Callsign`, `" + cup + "Cup`.`Rating` FROM `" + cup + "Cup`, `Players` WHERE `Players`.`BZID` = `" + cup + "Cup`.`BZID` AND `" + cup + "Cup`.`CupID` = (SELECT `Cups`.`CupID` FROM `Cups` WHERE `Cups`.`ServerID` = ? AND strftime('%s','now') < `Cups`.`EndTime` AND strftime('%s','now') > `Cups`.`StartTime`) ORDER BY `" + cup + "Cup`.`Rating` DESC, `Players`.`PlayingTime` ASC LIMIT 1 OFFSET " + place;
+    std::string top5query = "SELECT `Players`.`Callsign`, `" + cup + "Cup`.`Rating`, `Players`.`BZID` FROM `" + cup + "Cup`, `Players` WHERE `Players`.`BZID` = `" + cup + "Cup`.`BZID` AND `" + cup + "Cup`.`CupID` = (SELECT `Cups`.`CupID` FROM `Cups` WHERE `Cups`.`ServerID` = ? AND strftime('%s','now') < `Cups`.`EndTime` AND strftime('%s','now') > `Cups`.`StartTime`) ORDER BY `" + cup + "Cup`.`Rating` DESC, `Players`.`PlayingTime` ASC LIMIT 1 OFFSET " + place;
     sqlite3_stmt *statement;
 
     if (sqlite3_prepare_v2(db, top5query.c_str(), -1, &statement, 0) == SQLITE_OK)
@@ -646,6 +667,7 @@ std::vector<std::string> mofocup::getPlayerInCupStanding(std::string cup, std::s
 
         playerStats[0] = (char*)sqlite3_column_text(statement, 0);
         playerStats[1] = (char*)sqlite3_column_text(statement, 1);
+        playerStats[2] = (char*)sqlite3_column_text(statement, 2);
 
         sqlite3_finalize(statement);
     }
@@ -711,7 +733,7 @@ bool mofocup::isFirstTime(std::string bzid)
     if (sqlite3_prepare_v2(db, "SELECT `PlayingTime` FROM `Players` WHERE `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)", -1, &statement, 0) == SQLITE_OK)
     {
         sqlite3_bind_text(statement, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 2, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
         int result = sqlite3_step(statement);
 
         if (result == SQLITE_ROW)
@@ -730,6 +752,22 @@ bool mofocup::isFirstTime(std::string bzid)
     {
         bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: isFirstTime() :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
     }
+    
+    return false;
+}
+
+bool mofocup::isPlayerAvailable(std::string bzid)
+{
+    bz_APIIntList *playerList = bz_newIntList();
+    bz_getPlayerIndexList(playerList);
+
+    for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
+    {
+        if (strcmp(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(), bzid.c_str()) == 0)
+            return true;
+    }
+
+    bz_deleteIntList(playerList);
     
     return false;
 }
