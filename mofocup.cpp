@@ -72,6 +72,7 @@ public:
     virtual std::vector<std::string> getPlayerInCupStanding(std::string cup, std::string place);
     virtual std::vector<std::string> getPlayerStanding(std::string cup, std::string callsignOrBZID, bool playerOverride);
     virtual bool isDigit(std::string someString);
+    virtual bool isFirstTime(std::string bzid);
     virtual void incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement);
     virtual int playersKilledByGenocide(bz_eTeamType killerTeam);
     virtual void trackNewPlayingTime(std::string bzid);
@@ -336,6 +337,13 @@ void mofocup::Event(bz_EventData* eventData)
             if (bzid.empty() || joindata->record->team == eObservers) //don't do anything if the player is an observer or is not registered
                 return;
 
+            if (isFirstTime(bzid))
+            {
+                bz_sendTextMessagef(BZ_SERVER, joindata->playerID, "Welcome %s! By playing on Apocalypse, you have been entered to this month's MoFo Cup.", callsign.c_str());
+                bz_sendTextMessagef(BZ_SERVER, joindata->playerID, "The MoFo Cup is a monthly tournament that consists of the most Bounty, CTF, Geno hits, and kills a player has made.");
+                bz_sendTextMessagef(BZ_SERVER, joindata->playerID, "Type '/help cup' for more information about the MoFo Cup!");
+            }
+
             for (int i = 0; i < sizeof(cups)/sizeof(std::string); i++) //Add players to the database for the first time playing
             {
                 doQuery("INSERT OR IGNORE INTO `" + cups[i] + "Cup` VALUES (" + bzid + ", (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 0, 0)");
@@ -487,8 +495,6 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             bz_sendTextMessage(BZ_SERVER, playerID, "You are not a registered BZFlag player, please register at 'http://forums.bzflag.org' in order to join the MoFo Cup.");
             return true;
         }
-
-        sqlite3_stmt *statement;
 
         if (strcmp(params->get(0).c_str(), "") != 0)
         {
@@ -692,10 +698,39 @@ bool mofocup::isDigit(std::string myString) //Check to see if a string is a digi
 {
     for (int i = 0; i < myString.size(); i++) //Go through entire string
     {
-        if(!isdigit(myString[i])) //If one character is not a digit, then the string is not a digit
+        if (!isdigit(myString[i])) //If one character is not a digit, then the string is not a digit
             return false;
     }
     return true; //All characters are digits
+}
+
+bool mofocup::isFirstTime(std::string bzid)
+{
+    sqlite3_stmt *statement;
+    
+    if (sqlite3_prepare_v2(db, "SELECT `PlayingTime` FROM `Players` WHERE `BZID` = ?", -1, &statement, 0) == SQLITE_OK)
+    {
+        sqlite3_bind_text(statement, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
+        int result = sqlite3_step(statement);
+
+        if (result == SQLITE_ROW)
+        {
+            sqlite3_finalize(statement);
+            return true;
+        }
+        else
+        {
+            sqlite3_finalize(statement);
+            return false;
+        }
+
+    }
+    else
+    {
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: isFirstTime() :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
+    }
+    
+    return false;
 }
 
 void mofocup::incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement)
