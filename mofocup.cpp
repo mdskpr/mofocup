@@ -460,7 +460,7 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             {
                 std::vector<std::string> playerInfo = getPlayerInCupStanding(cup, convertToString(i));
 
-                bz_sendTextMessage(BZ_SERVER, playerID, formatScore(convertToString(i + 1) + playerInfo[0] + playerInfo[1]).c_str());
+                bz_sendTextMessage(BZ_SERVER, playerID, formatScore(convertToString(i + 1), playerInfo[0], playerInfo[1]).c_str());
             }
 
             if (std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).empty())
