@@ -527,7 +527,7 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
         {
             for (int i = 0; i < sizeof(cups)/sizeof(std::string); i++) //go through each cup
             {
-                std::string query = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cups[i] + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cups[i] + "Cup` AS c1 WHERE `BZID` = ?";
+                /*std::string query = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cups[i] + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cups[i] + "Cup` AS c1 WHERE `BZID` = ?";
                 if (sqlite3_prepare_v2(db, query.c_str(), -1, &statement, 0) == SQLITE_OK)
                 {
                     sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
@@ -546,7 +546,15 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
                     }
 
                     sqlite3_finalize(statement);
-                }
+                }*/
+                
+                
+                std::vector<std::string> playerRank = getPlayerStanding(cups[i], bz_getPlayerByIndex(playerID)->bzID.c_str(), 0);
+                
+                if (strcmp(playerRank[0].c_str(), "-1") == 0)
+                    bz_sendTextMessage(BZ_SERVER, playerID, "You are not part of the MoFo Cup yet. Get in there and cap or kill someone!");
+                else
+                    bz_sendTextMessagef(BZ_SERVER, playerID, "You are currently #%s in the %s Cup with a score of %s", playerRank[0].c_str(), cups[i].c_str(), playerRank[1].c_str());
             }
         }
 
@@ -693,7 +701,7 @@ std::vector<std::string> mofocup::getPlayerStanding(std::string cup, std::string
     sqlite3_stmt *statement;
 
     if (!isDigit(callsignOrBZID) || playerOverride)
-        query = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cup + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cup + "Cup` AS c1 WHERE `Callsign` = ?";
+        query = "SELECT `Rating`, `BZID` AS myBZID, (SELECT COUNT(*) FROM `CTFCup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS rowNum FROM `CTFCup` AS c1 WHERE (SELECT `Callsign` FROM `Players` WHERE `BZID` = myBZID) = ?";
     else
         query = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cup + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cup + "Cup` AS c1 WHERE `BZID` = ?";
 
