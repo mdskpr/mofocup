@@ -86,7 +86,7 @@ public:
         double joinTime;
     };
     std::vector<playingTimeStructure> playingTime;
-    
+
     std::string top5Players[4][5][3]; //0 - Bounty | 1 - CTF | 2 - Geno | 3 - Kills
 
     double lastDatabaseUpdate;
@@ -439,18 +439,18 @@ void mofocup::Event(bz_EventData* eventData)
 
                 bz_deleteIntList(playerList);
             }
-            
+
             for (int i = 0; i < 4; i++)
             {
                 for (int j = 0; j < 5; j++)
                 {
                     std::vector<std::string> getPlayerInformation = getPlayerInCupStanding(cups[i], convertToString(j));
-                    
+
                     if (strcmp(getPlayerInformation[2].c_str(), top5Players[i][j][2].c_str()) != 0)
                     {
                         if (isPlayerAvailable(getPlayerInformation[2]))
                             bz_sendTextMessagef(BZ_SERVER, BZ_ALLUSERS, "Congrats to %s for being #%i in the %s Cup!!!", getPlayerInformation[0].c_str(), j + 1, cups[i].c_str());
-                    
+
                         top5Players[i][j][0] = getPlayerInformation[0];
                         top5Players[i][j][1] = getPlayerInformation[1];
                         top5Players[i][j][2] = getPlayerInformation[2];
@@ -534,7 +534,7 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             for (int i = 0; i < sizeof(cups)/sizeof(std::string); i++) //go through each cup
             {
                 std::vector<std::string> playerRank = getPlayerStanding(cups[i], bz_getPlayerByIndex(playerID)->bzID.c_str(), 0);
-                
+
                 if (strcmp(playerRank[0].c_str(), "-1") == 0)
                     bz_sendTextMessage(BZ_SERVER, playerID, "You are not part of the MoFo Cup yet. Get in there and cap or kill someone!");
                 else
@@ -686,7 +686,7 @@ std::vector<std::string> mofocup::getPlayerStanding(std::string cup, std::string
     sqlite3_stmt *statement;
 
     if (!isDigit(callsignOrBZID) || playerOverride)
-        query = "SELECT `Rating`, `BZID` AS myBZID, (SELECT COUNT(*) FROM `CTFCup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS rowNum FROM `CTFCup` AS c1 WHERE (SELECT `Callsign` FROM `Players` WHERE `BZID` = myBZID) = ?";
+        query = "SELECT `Rating`, `BZID` AS myBZID, (SELECT COUNT(*) FROM `" + cup + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS rowNum FROM `" + cup + "Cup` AS c1 WHERE (SELECT `Callsign` FROM `Players` WHERE `BZID` = myBZID) = ?";
     else
         query = "SELECT `Rating`, `BZID`, (SELECT COUNT(*) FROM `" + cup + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cup + "Cup` AS c1 WHERE `BZID` = ?";
 
@@ -729,7 +729,7 @@ bool mofocup::isDigit(std::string myString) //Check to see if a string is a digi
 bool mofocup::isFirstTime(std::string bzid)
 {
     sqlite3_stmt *statement;
-    
+
     if (sqlite3_prepare_v2(db, "SELECT `PlayingTime` FROM `Players` WHERE `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)", -1, &statement, 0) == SQLITE_OK)
     {
         sqlite3_bind_text(statement, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
@@ -739,12 +739,12 @@ bool mofocup::isFirstTime(std::string bzid)
         if (result == SQLITE_ROW)
         {
             sqlite3_finalize(statement);
-            return true;
+            return false;
         }
         else
         {
             sqlite3_finalize(statement);
-            return false;
+            return true;
         }
 
     }
@@ -752,8 +752,8 @@ bool mofocup::isFirstTime(std::string bzid)
     {
         bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: isFirstTime() :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
     }
-    
-    return false;
+
+    return true;
 }
 
 bool mofocup::isPlayerAvailable(std::string bzid)
@@ -768,7 +768,7 @@ bool mofocup::isPlayerAvailable(std::string bzid)
     }
 
     bz_deleteIntList(playerList);
-    
+
     return false;
 }
 
@@ -879,6 +879,14 @@ void mofocup::updatePlayerRatio(std::string bzid)
         {
             sqlite3_bind_text(currentStats, 1, bzid.c_str(), -1, SQLITE_TRANSIENT); //build the query
             int result = sqlite3_step(currentStats);
+
+            if ((char*)sqlite3_column_text(currentStats, 0) == NULL ||
+                (char*)sqlite3_column_text(currentStats, 1) == NULL ||
+                (char*)sqlite3_column_text(currentStats, 0) == NULL)
+            {
+                bz_debugMessagef(0, "DEBUG :: MoFo Cup :: An unknown error has occured! A BZID has been returned as NULL");
+                return;
+            }
 
             //store the values needed
             points = atoi((char*)sqlite3_column_text(currentStats, 0));
