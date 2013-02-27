@@ -68,6 +68,10 @@ public:
     virtual std::string convertToString(int myInt);
     virtual std::string convertToString(double myDouble);
     virtual void doQuery(std::string query);
+    virtual std::string formatScore(std::string place, std::string callsign, std::string points);
+    virtual std::vector<std::string> getPlayerInCupStanding(std::string cup, std::string place);
+    virtual std::vector<std::string> getPlayerStanding(std::string cup, std::string callsignOrBZID, bool playerOverride);
+    virtual bool isDigit(std::string someString);
     virtual void incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement);
     virtual int playersKilledByGenocide(bz_eTeamType killerTeam);
     virtual void trackNewPlayingTime(std::string bzid);
@@ -448,47 +452,15 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             else if (strcmp(params->get(0).c_str(), "geno") == 0) cup = "Geno";
             else if (strcmp(params->get(0).c_str(), "kills") == 0) cup = "Kills";
 
-            std::string top5query = "SELECT `Players`.`Callsign`, `" + cup + "Cup`.`Rating` FROM `" + cup + "Cup`, `Players` WHERE `Players`.`BZID` = `" + cup + "Cup`.`BZID` AND `" + cup + "Cup`.`CupID` = (SELECT `Cups`.`CupID` FROM `Cups` WHERE `Cups`.`ServerID` = ? AND strftime('%s','now') < `Cups`.`EndTime` AND strftime('%s','now') > `Cups`.`StartTime`) ORDER BY `" + cup + "Cup`.`Rating` DESC, `Players`.`PlayingTime` ASC LIMIT 5";
-            std::string myPlaceQuery = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cup + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cup + "Cup` AS c1 WHERE `BZID` = ?";
-            sqlite3_stmt *statement;
+            bz_sendTextMessage(BZ_SERVER, playerID, "Planet MoFo CTF Cup");
+            bz_sendTextMessage(BZ_SERVER, playerID, "--------------------");
+            bz_sendTextMessage(BZ_SERVER, playerID, "        Callsign                    Points");
 
-            if (sqlite3_prepare_v2(db, top5query.c_str(), -1, &statement, 0) == SQLITE_OK)
+            for (int i = 0; i < 5; i++)
             {
-                sqlite3_bind_text(statement, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-                int cols = sqlite3_column_count(statement), result = 0, counter = 1;
+                std::vector<std::string> playerInfo = getPlayerInCupStanding(cup, convertToString(i));
 
-                bz_sendTextMessage(BZ_SERVER, playerID, "Planet MoFo CTF Cup");
-                bz_sendTextMessage(BZ_SERVER, playerID, "--------------------");
-                bz_sendTextMessage(BZ_SERVER, playerID, "        Callsign                    Points");
-
-                while (true)
-                {
-                    result = sqlite3_step(statement);
-
-                    if (result == SQLITE_ROW)
-                    {
-                        std::string place = "#" + convertToString(counter);
-                        std::string playerCallsign = (char*)sqlite3_column_text(statement, 0);
-                        std::string playerRatio = (char*)sqlite3_column_text(statement, 1);
-
-                        if (playerCallsign.length() >= 26) playerCallsign = playerCallsign.substr(0, 26);
-                        while (place.length() < 8) place += " ";
-                        while (playerCallsign.length() < 28) playerCallsign += " ";
-                        while (playerRatio.length() <    6) playerRatio += " ";
-
-                        bz_sendTextMessage(BZ_SERVER, playerID, std::string(place + playerCallsign + playerRatio).c_str());
-                    }
-                    else
-                        break;
-
-                    counter++;
-                }
-
-                sqlite3_finalize(statement);
-            }
-            else
-            {
-                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: /cup [1] :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
+                bz_sendTextMessage(BZ_SERVER, playerID, formatScore(convertToString(i + 1) + playerInfo[0] + playerInfo[1]).c_str());
             }
 
             if (std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).empty())
@@ -496,38 +468,9 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 
             bz_sendTextMessage(BZ_SERVER, playerID, " ");
 
-            if (sqlite3_prepare_v2(db, myPlaceQuery.c_str(), -1, &statement, 0) == SQLITE_OK)
-            {
-                sqlite3_bind_text(statement, 1, std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).c_str(), -1, SQLITE_TRANSIENT);
-                int cols = sqlite3_column_count(statement), result = 0;
+            std::vector<std::string> myPlayerInfo = getPlayerStanding(cup, bz_getPlayerByIndex(playerID)->bzID.c_str(), 0);
 
-                while (true)
-                {
-                    result = sqlite3_step(statement);
-
-                    if (result == SQLITE_ROW)
-                    {
-                        std::string myRatio = (char*)sqlite3_column_text(statement, 0);
-                        std::string myPosition = std::string("#") + (char*)sqlite3_column_text(statement, 1);
-                        std::string myCallsign = bz_getPlayerByIndex(playerID)->callsign.c_str();
-
-                        if (myCallsign.length() >= 26) myCallsign = myCallsign.substr(0, 26);
-                        while (myPosition.length() < 8) myPosition += " ";
-                        while (myCallsign.length() < 28) myCallsign += " ";
-                        while (myRatio.length() < 6) myRatio += " ";
-
-                        bz_sendTextMessage(BZ_SERVER, playerID, std::string(myPosition + myCallsign + myRatio).c_str());
-                    }
-                    else
-                        break;
-                }
-
-                sqlite3_finalize(statement);
-            }
-            else
-            {
-                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: /cup [2] :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
-            }
+            bz_sendTextMessage(BZ_SERVER, playerID, formatScore(myPlayerInfo[0], bz_getPlayerByIndex(playerID)->callsign.c_str(), myPlayerInfo[1]).c_str());
         }
         else
         {
@@ -620,7 +563,7 @@ void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
             {
                 double timePlayed = bz_getCurrentTime() - playingTime.at(i).joinTime; //get the player's playing time
 
-                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has played for %d seconds. Updating the database...", callsign.c_str(), bzid.c_str(), timePlayed);
+                bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has played for %i seconds. Updating the database...", callsign.c_str(), bzid.c_str(), timePlayed);
 
                 //the query
                 std::string updatePlayingTimeQuery = ""
@@ -699,6 +642,81 @@ void mofocup::doQuery(std::string query)
         bz_debugMessage(2, "DEBUG :: MoFo Cup :: SQL ERROR!");
         bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s", db_err);
     }
+}
+
+std::string mofocup::formatScore(std::string place, std::string callsign, std::string points)
+{
+    place = "#" + place;
+    if (callsign.length() >= 26) callsign = callsign.substr(0, 26);
+    while (place.length() < 8) place += " ";
+    while (callsign.length() < 28) callsign += " ";
+    while (points.length() < 6) points += " ";
+
+    return (place + callsign + points);
+}
+
+std::vector<std::string> mofocup::getPlayerInCupStanding(std::string cup, std::string place)
+{
+    std::vector<std::string> playerStats(2);
+
+    std::string top5query = "SELECT `Players`.`Callsign`, `" + cup + "Cup`.`Rating` FROM `" + cup + "Cup`, `Players` WHERE `Players`.`BZID` = `" + cup + "Cup`.`BZID` AND `" + cup + "Cup`.`CupID` = (SELECT `Cups`.`CupID` FROM `Cups` WHERE `Cups`.`ServerID` = ? AND strftime('%s','now') < `Cups`.`EndTime` AND strftime('%s','now') > `Cups`.`StartTime`) ORDER BY `" + cup + "Cup`.`Rating` DESC, `Players`.`PlayingTime` ASC LIMIT 1 OFFSET " + place;
+    sqlite3_stmt *statement;
+
+    if (sqlite3_prepare_v2(db, top5query.c_str(), -1, &statement, 0) == SQLITE_OK)
+    {
+        sqlite3_bind_text(statement, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+        int cols = sqlite3_column_count(statement), result = result = sqlite3_step(statement), counter = 1;
+
+        playerStats[0] = (char*)sqlite3_column_text(statement, 0);
+        playerStats[1] = (char*)sqlite3_column_text(statement, 1);
+
+        sqlite3_finalize(statement);
+    }
+    else
+    {
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: getPlayerInCupStanding() :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
+    }
+
+    return playerStats;
+}
+
+std::vector<std::string> mofocup::getPlayerStanding(std::string cup, std::string callsignOrBZID, bool playerOverride)
+{
+    std::vector<std::string> playerStats(2);
+    std::string query = "";
+    sqlite3_stmt *statement;
+
+    if (!isDigit(callsignOrBZID) || playerOverride)
+        query = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cup + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cup + "Cup` AS c1 WHERE `Callsign` = ?";
+    else
+        query = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cup + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cup + "Cup` AS c1 WHERE `BZID` = ?";
+
+    if (sqlite3_prepare_v2(db, query.c_str(), -1, &statement, 0) == SQLITE_OK)
+    {
+        sqlite3_bind_text(statement, 1, callsignOrBZID.c_str(), -1, SQLITE_TRANSIENT);
+        int result = sqlite3_step(statement);
+
+        playerStats[1] = (char*)sqlite3_column_text(statement, 0);
+        playerStats[0] = (char*)sqlite3_column_text(statement, 1);
+
+        sqlite3_finalize(statement);
+    }
+    else
+    {
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: getPlayerStanding() :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
+    }
+
+    return playerStats;
+}
+
+bool mofocup::isDigit(std::string myString) //Check to see if a string is a digit
+{
+    for (int i = 0; i < myString.size(); i++) //Go through entire string
+    {
+        if(!isdigit(myString[i])) //If one character is not a digit, then the string is not a digit
+            return false;
+    }
+    return true; //All characters are digits
 }
 
 void mofocup::incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement)
