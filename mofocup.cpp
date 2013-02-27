@@ -688,7 +688,7 @@ std::vector<std::string> mofocup::getPlayerStanding(std::string cup, std::string
     if (!isDigit(callsignOrBZID) || playerOverride)
         query = "SELECT `Rating`, `BZID` AS myBZID, (SELECT COUNT(*) FROM `CTFCup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS rowNum FROM `CTFCup` AS c1 WHERE (SELECT `Callsign` FROM `Players` WHERE `BZID` = myBZID) = ?";
     else
-        query = "SELECT `Rating`, (SELECT COUNT(*) FROM `" + cup + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cup + "Cup` AS c1 WHERE `BZID` = ?";
+        query = "SELECT `Rating`, `BZID`, (SELECT COUNT(*) FROM `" + cup + "Cup` AS c2 WHERE c2.Rating > c1.Rating) + 1 AS row_Num FROM `" + cup + "Cup` AS c1 WHERE `BZID` = ?";
 
     if (sqlite3_prepare_v2(db, query.c_str(), -1, &statement, 0) == SQLITE_OK)
     {
