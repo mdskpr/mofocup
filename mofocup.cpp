@@ -517,16 +517,25 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             return true;
         }
 
+        std::string callsignToLookup;
+
+        for (unsigned int i = 0; i < params->size(); i++)
+        {
+            callsignToLookup += params->get(i).c_str();
+            if (i != params->size() - 1) // so we don't stick a whitespace on the end
+                callsignToLookup += " "; // add a whitespace between each chat text parameter
+        }
+
         if (strcmp(params->get(0).c_str(), "") != 0)
         {
             for (int i = 0; i < sizeof(cups)/sizeof(std::string); i++) //go through each cup
             {
-                std::vector<std::string> playerRank = getPlayerStanding(cups[i], params->get(0).c_str(), 1);
+                std::vector<std::string> playerRank = getPlayerStanding(cups[i], callsignToLookup, 1);
 
                 if (strcmp(playerRank[0].c_str(), "-1") == 0)
-                    bz_sendTextMessagef(BZ_SERVER, playerID, "%s is not part of the current MoFo Cup.", params->get(0).c_str());
+                    bz_sendTextMessagef(BZ_SERVER, playerID, "%s is not part of the current MoFo Cup.", callsignToLookup.c_str());
                 else
-                    bz_sendTextMessagef(BZ_SERVER, playerID, "%s is currently #%s in the %s Cup with a score of %s", params->get(0).c_str(), playerRank[0].c_str(), cups[i].c_str(), playerRank[1].c_str());
+                    bz_sendTextMessagef(BZ_SERVER, playerID, "%s is currently #%s in the %s Cup with a score of %s", callsignToLookup.c_str(), playerRank[0].c_str(), cups[i].c_str(), playerRank[1].c_str());
             }
         }
         else
@@ -697,8 +706,17 @@ std::vector<std::string> mofocup::getPlayerStanding(std::string cup, std::string
 
         if (result == SQLITE_ROW)
         {
-            playerStats[1] = (char*)sqlite3_column_text(statement, 0);
-            playerStats[0] = (char*)sqlite3_column_text(statement, 2);
+            if ((char*)sqlite3_column_text(statement, 0) == NULL ||
+                (char*)sqlite3_column_text(statement, 2) == NULL)
+            {
+                playerStats[1] = "0";
+                playerStats[0] = "0";
+            }
+            else
+            {
+                playerStats[1] = (char*)sqlite3_column_text(statement, 0);
+                playerStats[0] = (char*)sqlite3_column_text(statement, 2);
+            }
         }
         else
         {
