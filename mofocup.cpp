@@ -39,7 +39,7 @@ License:
 BSD
 
 Version:
-0.9.8
+1.0.0
 */
 
 #include <iostream>
@@ -57,7 +57,7 @@ public:
     sqlite3* db; //sqlite database we'll be using
     std::string dbfilename; //the path to the database
 
-    virtual const char* Name (){return "MoFo Cup (A1)";}
+    virtual const char* Name (){return "MoFo Cup [RC 1]";}
     virtual void Init(const char* /*commandLine*/);
     virtual void Cleanup(void);
 
@@ -236,7 +236,7 @@ void mofocup::Event(bz_EventData* eventData)
         {
             bz_PlayerDieEventData_V1* diedata = (bz_PlayerDieEventData_V1*)eventData;
 
-            if (diedata->killerID == 253)
+            if (diedata->killerID == 253) //ignore kills made by world weapons
                 return;
 
             std::string bzid = bz_getPlayerByIndex(diedata->killerID)->bzID.c_str(),
@@ -340,7 +340,7 @@ void mofocup::Event(bz_EventData* eventData)
             if (bzid.empty() || joindata->record->team == eObservers) //don't do anything if the player is an observer or is not registered
                 return;
 
-            if (isFirstTime(bzid))
+            if (isFirstTime(bzid)) //introduce players into the MoFo Cup
             {
                 bz_sendTextMessagef(BZ_SERVER, joindata->playerID, "Welcome %s! By playing on Apocalypse, you have been entered to this month's MoFo Cup.", callsign.c_str());
                 bz_sendTextMessagef(BZ_SERVER, joindata->playerID, "The MoFo Cup is a monthly tournament that consists of the most Bounty, CTF, Geno hits, and kills a player has made.");
@@ -440,17 +440,18 @@ void mofocup::Event(bz_EventData* eventData)
                 bz_deleteIntList(playerList);
             }
 
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < 4; i++) //loop through all the cups
             {
-                for (int j = 0; j < 5; j++)
+                for (int j = 0; j < 5; j++) //loop through the top 5 players
                 {
                     std::vector<std::string> getPlayerInformation = getPlayerInCupStanding(cups[i], convertToString(j));
 
-                    if (strcmp(getPlayerInformation[2].c_str(), top5Players[i][j][2].c_str()) != 0)
+                    if (strcmp(getPlayerInformation[2].c_str(), top5Players[i][j][2].c_str()) != 0) //if a player has a new position in the top 5
                     {
-                        if (isPlayerAvailable(getPlayerInformation[2]))
+                        if (isPlayerAvailable(getPlayerInformation[2])) //if the player is playing on the server, announce it
                             bz_sendTextMessagef(BZ_SERVER, BZ_ALLUSERS, "Congrats to %s for being #%i in the %s Cup!!!", getPlayerInformation[0].c_str(), j + 1, cups[i].c_str());
 
+                        //update the player stats
                         top5Players[i][j][0] = getPlayerInformation[0];
                         top5Players[i][j][1] = getPlayerInformation[1];
                         top5Players[i][j][2] = getPlayerInformation[2];
@@ -485,23 +486,23 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             bz_sendTextMessage(BZ_SERVER, playerID, "--------------------");
             bz_sendTextMessage(BZ_SERVER, playerID, "        Callsign                    Points");
 
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 5; i++) //get the stats for top 5 players
             {
                 std::vector<std::string> playerInfo = getPlayerInCupStanding(cup, convertToString(i));
 
                 bz_sendTextMessage(BZ_SERVER, playerID, formatScore(convertToString(i + 1), playerInfo[0], playerInfo[1]).c_str());
             }
 
-            if (std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).empty())
+            if (std::string(bz_getPlayerByIndex(playerID)->bzID.c_str()).empty()) //check if player is registered to display their stats
                 return true;
 
-            bz_sendTextMessage(BZ_SERVER, playerID, " ");
+            bz_sendTextMessage(BZ_SERVER, playerID, " "); //nice little space
 
-            std::vector<std::string> myPlayerInfo = getPlayerStanding(cup, bz_getPlayerByIndex(playerID)->bzID.c_str(), 0);
+            std::vector<std::string> myPlayerInfo = getPlayerStanding(cup, bz_getPlayerByIndex(playerID)->bzID.c_str(), 0); //get player's stats
 
             bz_sendTextMessage(BZ_SERVER, playerID, formatScore(myPlayerInfo[0], bz_getPlayerByIndex(playerID)->callsign.c_str(), myPlayerInfo[1]).c_str());
         }
-        else
+        else //give the user some help
         {
             bz_sendTextMessage(BZ_SERVER, playerID, "Usage: /cup <bounty | ctf | geno | kills>");
             bz_sendTextMessage(BZ_SERVER, playerID, "See '/help cup' for more information regarding the MoFo Cup.");
@@ -517,16 +518,16 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
             return true;
         }
 
-        std::string callsignToLookup;
+        std::string callsignToLookup; //store the callsign we're going to search for
 
-        for (unsigned int i = 0; i < params->size(); i++)
+        for (unsigned int i = 0; i < params->size(); i++) //piece together the callsign from the slash command parameters
         {
             callsignToLookup += params->get(i).c_str();
             if (i != params->size() - 1) // so we don't stick a whitespace on the end
                 callsignToLookup += " "; // add a whitespace between each chat text parameter
         }
 
-        if (strcmp(params->get(0).c_str(), "") != 0)
+        if (strcmp(params->get(0).c_str(), "") != 0) //if we are searching for a callsign
         {
             for (int i = 0; i < sizeof(cups)/sizeof(std::string); i++) //go through each cup
             {
@@ -624,6 +625,10 @@ std::string mofocup::convertToString(int myInt)
 
 std::string mofocup::convertToString(double myDouble)
 {
+    /*
+        Convert an double into a string
+    */
+
     std::ostringstream myString;
 
     if (!(myString << myDouble))
@@ -653,6 +658,10 @@ void mofocup::doQuery(std::string query)
 
 std::string mofocup::formatScore(std::string place, std::string callsign, std::string points)
 {
+    /*
+        Format the leader board with spacing
+    */
+
     place = "#" + place;
     if (callsign.length() >= 26) callsign = callsign.substr(0, 26);
     while (place.length() < 8) place += " ";
@@ -664,6 +673,10 @@ std::string mofocup::formatScore(std::string place, std::string callsign, std::s
 
 std::vector<std::string> mofocup::getPlayerInCupStanding(std::string cup, std::string place)
 {
+    /*
+        Get the information for the Nth player in the cup
+    */
+
     std::vector<std::string> playerStats(3);
 
     std::string top5query = "SELECT `Players`.`Callsign`, `" + cup + "Cup`.`Rating`, `Players`.`BZID` FROM `" + cup + "Cup`, `Players` WHERE `Players`.`BZID` = `" + cup + "Cup`.`BZID` AND `" + cup + "Cup`.`CupID` = (SELECT `Cups`.`CupID` FROM `Cups` WHERE `Cups`.`ServerID` = ? AND strftime('%s','now') < `Cups`.`EndTime` AND strftime('%s','now') > `Cups`.`StartTime`) ORDER BY `" + cup + "Cup`.`Rating` DESC, `Players`.`PlayingTime` ASC LIMIT 1 OFFSET " + place;
@@ -690,6 +703,10 @@ std::vector<std::string> mofocup::getPlayerInCupStanding(std::string cup, std::s
 
 std::vector<std::string> mofocup::getPlayerStanding(std::string cup, std::string callsignOrBZID, bool playerOverride)
 {
+    /*
+        Get the information for a player based on callsign or BZID
+    */
+
     std::vector<std::string> playerStats(2);
     std::string query = "";
     sqlite3_stmt *statement;
@@ -732,62 +749,6 @@ std::vector<std::string> mofocup::getPlayerStanding(std::string cup, std::string
     }
 
     return playerStats;
-}
-
-bool mofocup::isDigit(std::string myString) //Check to see if a string is a digit
-{
-    for (int i = 0; i < myString.size(); i++) //Go through entire string
-    {
-        if (!isdigit(myString[i])) //If one character is not a digit, then the string is not a digit
-            return false;
-    }
-    return true; //All characters are digits
-}
-
-bool mofocup::isFirstTime(std::string bzid)
-{
-    sqlite3_stmt *statement;
-
-    if (sqlite3_prepare_v2(db, "SELECT `PlayingTime` FROM `Players` WHERE `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)", -1, &statement, 0) == SQLITE_OK)
-    {
-        sqlite3_bind_text(statement, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 2, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-        int result = sqlite3_step(statement);
-
-        if (result == SQLITE_ROW)
-        {
-            sqlite3_finalize(statement);
-            return false;
-        }
-        else
-        {
-            sqlite3_finalize(statement);
-            return true;
-        }
-
-    }
-    else
-    {
-        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: isFirstTime() :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
-    }
-
-    return true;
-}
-
-bool mofocup::isPlayerAvailable(std::string bzid)
-{
-    bz_APIIntList *playerList = bz_newIntList();
-    bz_getPlayerIndexList(playerList);
-
-    for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
-    {
-        if (strcmp(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(), bzid.c_str()) == 0)
-            return true;
-    }
-
-    bz_deleteIntList(playerList);
-
-    return false;
 }
 
 void mofocup::incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement)
@@ -833,6 +794,74 @@ void mofocup::incrementPoints(std::string bzid, std::string cup, std::string poi
     {
         bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: incrementPoints() :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
     }
+}
+
+bool mofocup::isDigit(std::string myString)
+{
+    /*
+        Check to see if a string is a digit
+    */
+
+    for (int i = 0; i < myString.size(); i++) //Go through entire string
+    {
+        if (!isdigit(myString[i])) //If one character is not a digit, then the string is not a digit
+            return false;
+    }
+    return true; //All characters are digits
+}
+
+bool mofocup::isFirstTime(std::string bzid)
+{
+    /*
+        Check if it's the player's first time as part of the current cup
+    */
+
+    sqlite3_stmt *statement;
+
+    if (sqlite3_prepare_v2(db, "SELECT `PlayingTime` FROM `Players` WHERE `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)", -1, &statement, 0) == SQLITE_OK)
+    {
+        sqlite3_bind_text(statement, 1, bzid.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 2, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
+        int result = sqlite3_step(statement);
+
+        if (result == SQLITE_ROW)
+        {
+            sqlite3_finalize(statement);
+            return false;
+        }
+        else
+        {
+            sqlite3_finalize(statement);
+            return true;
+        }
+
+    }
+    else
+    {
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: SQLite :: isFirstTime() :: Error #%i: %s", sqlite3_errcode(db), sqlite3_errmsg(db));
+    }
+
+    return true;
+}
+
+bool mofocup::isPlayerAvailable(std::string bzid)
+{
+    /*
+        Check if a player is on the server based on the BZID
+    */
+
+    bz_APIIntList *playerList = bz_newIntList();
+    bz_getPlayerIndexList(playerList);
+
+    for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
+    {
+        if (strcmp(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(), bzid.c_str()) == 0)
+            return true;
+    }
+
+    bz_deleteIntList(playerList);
+
+    return false;
 }
 
 int mofocup::playersKilledByGenocide(bz_eTeamType killerTeam)
