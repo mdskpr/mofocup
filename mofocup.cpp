@@ -39,7 +39,7 @@ License:
 BSD
 
 Version:
-1.0.0
+1.0.1
 */
 
 #include <iostream>
@@ -57,7 +57,7 @@ public:
     sqlite3* db; //sqlite database we'll be using
     std::string dbfilename; //the path to the database
 
-    virtual const char* Name (){return "MoFo Cup [RC 1]";}
+    virtual const char* Name (){return "MoFo Cup [RC 2]";}
     virtual void Init(const char* /*commandLine*/);
     virtual void Cleanup(void);
 
@@ -74,6 +74,7 @@ public:
     virtual bool isDigit(std::string someString);
     virtual bool isFirstTime(std::string bzid);
     virtual bool isPlayerAvailable(std::string bzid);
+    virtual bool isValidPlayerID(int playerID);
     virtual void incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement);
     virtual int playersKilledByGenocide(bz_eTeamType killerTeam);
     virtual void trackNewPlayingTime(std::string bzid);
@@ -222,6 +223,9 @@ void mofocup::Event(bz_EventData* eventData)
         case bz_eFlagDroppedEvent:
         {
             bz_FlagDroppedEventData_V1* flagdropdata = (bz_FlagDroppedEventData_V1*)eventData;
+
+            if (!isValidPlayerID(flagdropdata->playerID))
+                return;
 
             if (flagdropdata->flagID == 0 || flagdropdata->flagID == 1) //check if a team flag was dropped
             {
@@ -856,6 +860,22 @@ bool mofocup::isPlayerAvailable(std::string bzid)
     for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
     {
         if (strcmp(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(), bzid.c_str()) == 0)
+            return true;
+    }
+
+    bz_deleteIntList(playerList);
+
+    return false;
+}
+
+bool mofocup::isValidPlayerID(int playerID)
+{
+    bz_APIIntList *playerList = bz_newIntList();
+    bz_getPlayerIndexList(playerList);
+
+    for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
+    {
+        if (playerList->get(i) == playerID)
             return true;
     }
 
