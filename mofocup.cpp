@@ -689,11 +689,31 @@ std::vector<std::string> mofocup::getPlayerInCupStanding(std::string cup, std::s
     if (sqlite3_prepare_v2(db, top5query.c_str(), -1, &statement, 0) == SQLITE_OK)
     {
         sqlite3_bind_text(statement, 1, bz_getPublicAddr().c_str(), -1, SQLITE_TRANSIENT);
-        int cols = sqlite3_column_count(statement), result = result = sqlite3_step(statement), counter = 1;
+        int result = sqlite3_step(statement);
 
-        playerStats[0] = (char*)sqlite3_column_text(statement, 0);
-        playerStats[1] = (char*)sqlite3_column_text(statement, 1);
-        playerStats[2] = (char*)sqlite3_column_text(statement, 2);
+        if (result == SQLITE_ROW)
+        {
+            if ((char*)sqlite3_column_text(statement, 0) != NULL ||
+                (char*)sqlite3_column_text(statement, 1) != NULL ||
+                (char*)sqlite3_column_text(statement, 2) != NULL)
+            {
+                playerStats[0] = (char*)sqlite3_column_text(statement, 0);
+                playerStats[1] = (char*)sqlite3_column_text(statement, 1);
+                playerStats[2] = (char*)sqlite3_column_text(statement, 2);
+            }
+            else
+            {
+                playerStats[0] = "Anonymous";
+                playerStats[1] = "-1";
+                playerStats[2] = "0";
+            }
+        }
+        else
+        {
+            playerStats[0] = "Anonymous";
+            playerStats[1] = "-1";
+            playerStats[2] = "0";
+        }
 
         sqlite3_finalize(statement);
     }
