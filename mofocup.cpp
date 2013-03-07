@@ -377,7 +377,7 @@ void mofocup::Event(bz_EventData* eventData)
                     doQuery("INSERT OR IGNORE INTO `Points` VALUES ('" + cups[i] + "', " + bzid + ", (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 0, 0)");
                 }
 
-                doQuery("INSERT OR IGNORE INTO `Players` VALUES (" + bzid + ", '" + callsign + "', (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 0)");
+                doQuery("INSERT OR IGNORE INTO `Players` VALUES (" + bzid + ", '" + callsign + "', (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 1)");
             }
 
             bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has started to play, now recording playing time.", callsign.c_str(), bzid.c_str());
