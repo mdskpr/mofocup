@@ -39,7 +39,7 @@ License:
 BSD
 
 Version:
-1.1.0
+1.2.0
 */
 
 #include <iostream>
@@ -58,7 +58,7 @@ public:
     sqlite3* db; //sqlite database we'll be using
     std::string dbfilename; //the path to the database
 
-    virtual const char* Name (){return "MoFo Cup [RC 3]";}
+    virtual const char* Name (){return "MoFo Cup [RC 4]";}
     virtual void Init(const char* commandLine);
     virtual void Cleanup(void);
 
@@ -170,6 +170,37 @@ void mofocup::Init(const char* commandLine)
         getPlayerStandingFromCallsignStmt == NULL || isFirstTimeStmt == NULL || incrementPointsStmt == NULL ||
         getCurrentPlayerStatsStmt == NULL || updatePlayerRatioStmt == NULL)
         bz_unloadPlugin(Name());
+
+    bz_APIIntList *playerList = bz_newIntList();
+    bz_getPlayerIndexList(playerList);
+
+    for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
+    {
+        std::string bzid = bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(),
+                    callsign = bz_getPlayerByIndex(playerList->get(i))->callsign.c_str();
+
+        if (bzid.empty() || bz_getPlayerByIndex(playerList->get(i))->team == eObservers) //don't do anything if the player is an observer or is not registered
+            continue;
+
+        if (isFirstTime(bzid)) //introduce players into the MoFo Cup
+        {
+            bz_sendTextMessagef(BZ_SERVER, playerList->get(i), "Welcome %s! By playing on Apocalypse, you have been entered to this month's MoFo Cup.", callsign.c_str());
+            bz_sendTextMessagef(BZ_SERVER, playerList->get(i), "The MoFo Cup is a monthly tournament that consists of the most Bounty, CTF, Geno hits, and kills a player has made.");
+            bz_sendTextMessagef(BZ_SERVER, playerList->get(i), "Type '/help cup' for more information about the MoFo Cup!");
+
+            for (int i = 0; i < sizeof(cups)/sizeof(std::string); i++) //Add players to the database for the first time playing
+            {
+                doQuery("INSERT OR IGNORE INTO `Points` VALUES ('" + cups[i] + "', " + bzid + ", (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 0, 0)");
+            }
+
+            doQuery("INSERT OR IGNORE INTO `Players` VALUES (" + bzid + ", '" + callsign + "', (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 1)");
+        }
+
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has started to play, now recording playing time.", callsign.c_str(), bzid.c_str());
+        trackNewPlayingTime(bzid);
+    }
+
+    bz_deleteIntList(playerList);
 
     bz_debugMessage(4, "DEBUG :: MoFo Cup :: Successfully loaded and database connection ready.");
 }
@@ -866,11 +897,13 @@ bool mofocup::isPlayerAvailable(std::string bzid)
     for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
     {
         if (strcmp(bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(), bzid.c_str()) == 0 && bz_getPlayerByIndex(playerList->get(i))->team != eObservers)
+        {
+            bz_deleteIntList(playerList);
             return true;
+        }
     }
 
     bz_deleteIntList(playerList);
-
     return false;
 }
 
@@ -882,11 +915,13 @@ bool mofocup::isValidPlayerID(int playerID)
     for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
     {
         if (playerList->get(i) == playerID)
+        {
+            bz_deleteIntList(playerList);
             return true;
+        }
     }
 
     bz_deleteIntList(playerList);
-
     return false;
 }
 
@@ -912,7 +947,6 @@ int mofocup::playersKilledByGenocide(bz_eTeamType killerTeam)
     }
 
     bz_deleteIntList(playerList);
-
     return playerCount;
 }
 
