@@ -39,7 +39,7 @@ License:
 BSD
 
 Version:
-1.2.0
+1.2.1
 */
 
 #include <iostream>
@@ -58,7 +58,7 @@ public:
     sqlite3* db; //sqlite database we'll be using
     std::string dbfilename; //the path to the database
 
-    virtual const char* Name (){return "MoFo Cup [RC 4]";}
+    virtual const char* Name (){return "MoFo Cup [RC 5]";}
     virtual void Init(const char* commandLine);
     virtual void Cleanup(void);
 
@@ -66,6 +66,7 @@ public:
     virtual bool SlashCommand(int playerID, bz_ApiString command, bz_ApiString message, bz_APIStringList *params);
 
     virtual void addCurrentPlayingTime(std::string bzid, std::string callsign);
+    virtual void cleanCup(void);
     virtual std::string convertToString(int myInt);
     virtual std::string convertToString(double myDouble);
     virtual void doQuery(std::string query);
@@ -80,6 +81,7 @@ public:
     virtual void incrementPoints(std::string bzid, std::string cup, std::string pointsToIncrement);
     virtual int playersKilledByGenocide(bz_eTeamType killerTeam);
     virtual sqlite3_stmt* prepareQuery(std::string sql);
+    virtual void startCup(void);
     virtual void trackNewPlayingTime(std::string bzid);
     virtual void updatePlayerRatio(std::string bzid);
 
@@ -116,6 +118,7 @@ void mofocup::Init(const char* commandLine)
 {
     bz_registerCustomSlashCommand("cup", this); //register the /cup command
     bz_registerCustomSlashCommand("rank", this); //register the /rank command
+    bz_registerCustomSlashCommand("refreshcup", this); //register the /refreshcup command
 
     if (commandLine == NULL || std::string(commandLine).empty()) //no database provided, unloadplugin ourselves
     {
@@ -157,51 +160,7 @@ void mofocup::Init(const char* commandLine)
         bz_unloadPlugin(Name());
     }
 
-    addCurrentPlayingTimeStmt = prepareQuery("UPDATE `Players` SET `PlayingTime` = (SELECT `PlayingTime` FROM `Players` WHERE `BZID` = ?) + ? WHERE `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`)");
-    getPlayerInCupStandingStmt = prepareQuery("SELECT `Players`.`Callsign`, `Points`.`Ratio`, `Players`.`BZID` FROM `Points`, `Players` WHERE `Players`.`BZID` = `Points`.`BZID` AND `CupType` = ? AND `Points`.`CupID` = (SELECT `Cups`.`CupID` FROM `Cups` WHERE `Points`.`CupType` = ? AND `Cups`.`ServerID` = ? AND strftime('%s','now') < `Cups`.`EndTime` AND strftime('%s','now') > `Cups`.`StartTime`) ORDER BY `Points`.`Ratio` DESC, `Players`.`PlayingTime` ASC LIMIT 1 OFFSET ?");
-    getPlayerStandingFromBZIDStmt = prepareQuery("SELECT `Ratio`, (SELECT COUNT(*) FROM `Points` AS c2 WHERE c2.Ratio > c1.Ratio AND `CupType` = ?) + 1 AS row_Num FROM `Points` AS c1 WHERE `BZID` = ? AND `CupType` = ?");
-    getPlayerStandingFromCallsignStmt = prepareQuery("SELECT `Ratio`, `BZID` AS myBZID, (SELECT COUNT(*) FROM `Points` AS c2 WHERE c2.Ratio > c1.Ratio AND `CupType` = ?) + 1 AS rowNum FROM `Points` AS c1 WHERE (SELECT `Callsign` FROM `Players` WHERE `BZID` = myBZID) LIKE ? AND `CupType` = ?");
-    isFirstTimeStmt = prepareQuery("SELECT `PlayingTime` FROM `Players` WHERE `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)");
-    incrementPointsStmt = prepareQuery("UPDATE `Points` SET `Points` = (SELECT `Points` FROM `Points` WHERE `BZID` = ? AND `CupType` = ?) + ? WHERE `CupType` = ? AND `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`)");
-    getCurrentPlayerStatsStmt = prepareQuery("SELECT `Points`.`Points`, `Players`.`PlayingTime`, `Points`.`Ratio` FROM `Points`, `Players` WHERE `Players`.`BZID` = `Points`.`BZID` AND `Points`.`BZID` = ? AND `CupType` = ? AND `Points`.`CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)");
-    updatePlayerRatioStmt = prepareQuery("UPDATE `Points` SET `Ratio` = ? WHERE `CupType` = ? AND `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`)");
-
-    if (addCurrentPlayingTimeStmt == NULL || getPlayerInCupStandingStmt == NULL || getPlayerStandingFromBZIDStmt == NULL ||
-        getPlayerStandingFromCallsignStmt == NULL || isFirstTimeStmt == NULL || incrementPointsStmt == NULL ||
-        getCurrentPlayerStatsStmt == NULL || updatePlayerRatioStmt == NULL)
-        bz_unloadPlugin(Name());
-
-    bz_APIIntList *playerList = bz_newIntList();
-    bz_getPlayerIndexList(playerList);
-
-    for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
-    {
-        std::string bzid = bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(),
-                    callsign = bz_getPlayerByIndex(playerList->get(i))->callsign.c_str();
-
-        if (bzid.empty() || bz_getPlayerByIndex(playerList->get(i))->team == eObservers) //don't do anything if the player is an observer or is not registered
-            continue;
-
-        if (isFirstTime(bzid)) //introduce players into the MoFo Cup
-        {
-            bz_sendTextMessagef(BZ_SERVER, playerList->get(i), "Welcome %s! By playing on Apocalypse, you have been entered to this month's MoFo Cup.", callsign.c_str());
-            bz_sendTextMessagef(BZ_SERVER, playerList->get(i), "The MoFo Cup is a monthly tournament that consists of the most Bounty, CTF, Geno hits, and kills a player has made.");
-            bz_sendTextMessagef(BZ_SERVER, playerList->get(i), "Type '/help cup' for more information about the MoFo Cup!");
-
-            for (int i = 0; i < sizeof(cups)/sizeof(std::string); i++) //Add players to the database for the first time playing
-            {
-                doQuery("INSERT OR IGNORE INTO `Points` VALUES ('" + cups[i] + "', " + bzid + ", (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 0, 0)");
-            }
-
-            doQuery("INSERT OR IGNORE INTO `Players` VALUES (" + bzid + ", '" + callsign + "', (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 1)");
-        }
-
-        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has started to play, now recording playing time.", callsign.c_str(), bzid.c_str());
-        trackNewPlayingTime(bzid);
-    }
-
-    bz_deleteIntList(playerList);
-
+    startCup();
     bz_debugMessage(4, "DEBUG :: MoFo Cup :: Successfully loaded and database connection ready.");
 }
 
@@ -210,19 +169,9 @@ void mofocup::Cleanup()
     Flush();
     bz_removeCustomSlashCommand("cup");
     bz_removeCustomSlashCommand("rank");
+    bz_removeCustomSlashCommand("refreshcup");
 
-    sqlite3_finalize(addCurrentPlayingTimeStmt);
-    sqlite3_finalize(getPlayerInCupStandingStmt);
-    sqlite3_finalize(getPlayerStandingFromBZIDStmt);
-    sqlite3_finalize(getPlayerStandingFromCallsignStmt);
-    sqlite3_finalize(isFirstTimeStmt);
-    sqlite3_finalize(incrementPointsStmt);
-    sqlite3_finalize(getCurrentPlayerStatsStmt);
-    sqlite3_finalize(updatePlayerRatioStmt);
-
-    if (db != NULL) //close the database connection since we won't need it
-      sqlite3_close(db);
-
+    cleanCup();
     bz_debugMessage(4, "DEBUG :: MoFo Cup :: Successfully unloaded and database connection closed.");
 }
 
@@ -630,6 +579,21 @@ bool mofocup::SlashCommand(int playerID, bz_ApiString command, bz_ApiString mess
 
         return true;
     }
+    else if (command == "refreshcup")
+    {
+        if (bz_hasPerm(playerID, "mofocup"))
+        {
+            bz_sendTextMessage(BZ_SERVER, BZ_ALLUSERS, "WARNING: There may be lag or jitter spikes for the next minute or so.");
+            bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s has requested the MoFo Cup database to be forcefully updated.", bz_getPlayerByIndex(playerID)->callsign.c_str());
+
+            cleanCup();
+            startCup();
+        }
+        else
+        {
+            bz_sendTextMessage(BZ_SERVER, playerID, "You must authenticate yourself in order to run this command.");
+        }
+    }
 }
 
 void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
@@ -663,6 +627,50 @@ void mofocup::addCurrentPlayingTime(std::string bzid, std::string callsign)
             }
         }
     }
+}
+
+void mofocup::cleanCup(void)
+{
+    bz_APIIntList *playerList = bz_newIntList();
+    bz_getPlayerIndexList(playerList);
+
+    for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
+    {
+        std::string bzid = bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(),
+                    callsign = bz_getPlayerByIndex(playerList->get(i))->callsign.c_str();
+        numberOfKills[playerList->get(i)] = 0;
+
+        if (bzid.empty() || bz_getPlayerByIndex(playerList->get(i))->team == eObservers) //don't do anything if the player is an observer or is not registered
+            return;
+
+        addCurrentPlayingTime(bzid, callsign); //they left, let's add their playing time to the database
+
+        if (bountyPoints[playerList->get(i)] > 0) incrementPoints(bzid, "Bounty", convertToString(bountyPoints[playerList->get(i)]));
+        if (genoPoints[playerList->get(i)] > 0) incrementPoints(bzid, "Geno", convertToString(genoPoints[playerList->get(i)]));
+        if (killPoints[playerList->get(i)] > 0) incrementPoints(bzid, "Kill", convertToString(killPoints[playerList->get(i)]));
+
+        updatePlayerRatio(bzid);
+
+        bountyPoints[playerList->get(i)] = 0;
+        genoPoints[playerList->get(i)] = 0;
+        killPoints[playerList->get(i)] = 0;
+
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: Stats recorded for %s (%s) while preparing for plugin clean up.", callsign.c_str(), bzid.c_str());
+    }
+
+    bz_deleteIntList(playerList);
+
+    sqlite3_finalize(addCurrentPlayingTimeStmt);
+    sqlite3_finalize(getPlayerInCupStandingStmt);
+    sqlite3_finalize(getPlayerStandingFromBZIDStmt);
+    sqlite3_finalize(getPlayerStandingFromCallsignStmt);
+    sqlite3_finalize(isFirstTimeStmt);
+    sqlite3_finalize(incrementPointsStmt);
+    sqlite3_finalize(getCurrentPlayerStatsStmt);
+    sqlite3_finalize(updatePlayerRatioStmt);
+
+    if (db != NULL) //close the database connection since we won't need it
+      sqlite3_close(db);
 }
 
 std::string mofocup::convertToString(int myInt)
@@ -976,6 +984,54 @@ sqlite3_stmt* mofocup::prepareQuery(std::string sql)
     }
 
     return preparedStatements[sql];
+}
+
+void mofocup::startCup(void)
+{
+    addCurrentPlayingTimeStmt = prepareQuery("UPDATE `Players` SET `PlayingTime` = (SELECT `PlayingTime` FROM `Players` WHERE `BZID` = ?) + ? WHERE `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`)");
+    getPlayerInCupStandingStmt = prepareQuery("SELECT `Players`.`Callsign`, `Points`.`Ratio`, `Players`.`BZID` FROM `Points`, `Players` WHERE `Players`.`BZID` = `Points`.`BZID` AND `CupType` = ? AND `Points`.`CupID` = (SELECT `Cups`.`CupID` FROM `Cups` WHERE `Points`.`CupType` = ? AND `Cups`.`ServerID` = ? AND strftime('%s','now') < `Cups`.`EndTime` AND strftime('%s','now') > `Cups`.`StartTime`) ORDER BY `Points`.`Ratio` DESC, `Players`.`PlayingTime` ASC LIMIT 1 OFFSET ?");
+    getPlayerStandingFromBZIDStmt = prepareQuery("SELECT `Ratio`, (SELECT COUNT(*) FROM `Points` AS c2 WHERE c2.Ratio > c1.Ratio AND `CupType` = ?) + 1 AS row_Num FROM `Points` AS c1 WHERE `BZID` = ? AND `CupType` = ?");
+    getPlayerStandingFromCallsignStmt = prepareQuery("SELECT `Ratio`, `BZID` AS myBZID, (SELECT COUNT(*) FROM `Points` AS c2 WHERE c2.Ratio > c1.Ratio AND `CupType` = ?) + 1 AS rowNum FROM `Points` AS c1 WHERE (SELECT `Callsign` FROM `Players` WHERE `BZID` = myBZID) LIKE ? AND `CupType` = ?");
+    isFirstTimeStmt = prepareQuery("SELECT `PlayingTime` FROM `Players` WHERE `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)");
+    incrementPointsStmt = prepareQuery("UPDATE `Points` SET `Points` = (SELECT `Points` FROM `Points` WHERE `BZID` = ? AND `CupType` = ?) + ? WHERE `CupType` = ? AND `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`)");
+    getCurrentPlayerStatsStmt = prepareQuery("SELECT `Points`.`Points`, `Players`.`PlayingTime`, `Points`.`Ratio` FROM `Points`, `Players` WHERE `Players`.`BZID` = `Points`.`BZID` AND `Points`.`BZID` = ? AND `CupType` = ? AND `Points`.`CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`)");
+    updatePlayerRatioStmt = prepareQuery("UPDATE `Points` SET `Ratio` = ? WHERE `CupType` = ? AND `BZID` = ? AND `CupID` = (SELECT `CupID` FROM `Cups` WHERE `ServerID` = ? AND strftime('%s', 'now') < `EndTime` AND strftime('%s', 'now') > `StartTime`)");
+
+    bz_APIIntList *playerList = bz_newIntList();
+    bz_getPlayerIndexList(playerList);
+
+    for (unsigned int i = 0; i < playerList->size(); i++) //Go through all the players
+    {
+        std::string bzid = bz_getPlayerByIndex(playerList->get(i))->bzID.c_str(),
+                    callsign = bz_getPlayerByIndex(playerList->get(i))->callsign.c_str();
+
+        if (bzid.empty() || bz_getPlayerByIndex(playerList->get(i))->team == eObservers) //don't do anything if the player is an observer or is not registered
+            continue;
+
+        if (isFirstTime(bzid)) //introduce players into the MoFo Cup
+        {
+            bz_sendTextMessagef(BZ_SERVER, playerList->get(i), "Welcome %s! By playing on Apocalypse, you have been entered to this month's MoFo Cup.", callsign.c_str());
+            bz_sendTextMessagef(BZ_SERVER, playerList->get(i), "The MoFo Cup is a monthly tournament that consists of the most Bounty, CTF, Geno hits, and kills a player has made.");
+            bz_sendTextMessagef(BZ_SERVER, playerList->get(i), "Type '/help cup' for more information about the MoFo Cup!");
+
+            for (int i = 0; i < sizeof(cups)/sizeof(std::string); i++) //Add players to the database for the first time playing
+            {
+                doQuery("INSERT OR IGNORE INTO `Points` VALUES ('" + cups[i] + "', " + bzid + ", (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 0, 0)");
+            }
+
+            doQuery("INSERT OR IGNORE INTO `Players` VALUES (" + bzid + ", '" + callsign + "', (SELECT `CupID` FROM `Cups` WHERE `ServerID` = '" + bz_getPublicAddr().c_str() + "' AND strftime('%s','now') < `EndTime` AND strftime('%s','now') > `StartTime`), 1)");
+        }
+
+        bz_debugMessagef(2, "DEBUG :: MoFo Cup :: %s (%s) has started to play, now recording playing time.", callsign.c_str(), bzid.c_str());
+        trackNewPlayingTime(bzid);
+    }
+
+    bz_deleteIntList(playerList);
+
+    if (addCurrentPlayingTimeStmt == NULL || getPlayerInCupStandingStmt == NULL || getPlayerStandingFromBZIDStmt == NULL ||
+        getPlayerStandingFromCallsignStmt == NULL || isFirstTimeStmt == NULL || incrementPointsStmt == NULL ||
+        getCurrentPlayerStatsStmt == NULL || updatePlayerRatioStmt == NULL)
+        bz_unloadPlugin(Name());
 }
 
 void mofocup::trackNewPlayingTime(std::string bzid)
